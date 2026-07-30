@@ -5,17 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>化学新闻快讯</title>
 <style>
+  /* ===== 全局变量与基础样式 ===== */
   :root {
     --text: #eef7ff;
-    --muted: rgba(210, 232, 255, 0.68);
-    --line: rgba(125, 211, 252, 0.20);
-    --card: rgba(8, 18, 34, 0.58);
-    --card-strong: rgba(10, 24, 46, 0.72);
+    --muted: rgba(210, 232, 255, 0.66);
     --cyan: #67e8f9;
-    --blue: #38bdf8;
     --violet: #a78bfa;
-    --gold: #fbbf24;
-    --danger: #fb7185;
+    --coral: #fb7185;
+    --card-bg: rgba(8, 18, 34, 0.55);
+    --card-border: rgba(125, 211, 252, 0.18);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
@@ -25,12 +23,24 @@
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     background:
-      radial-gradient(circle at 20% 10%, rgba(56, 189, 248, 0.16), transparent 32%),
-      radial-gradient(circle at 80% 18%, rgba(167, 139, 250, 0.14), transparent 34%),
-      linear-gradient(180deg, #030712 0%, #07111f 48%, #030712 100%);
+      radial-gradient(circle at 18% 8%, rgba(103, 232, 249, 0.14), transparent 36%),
+      radial-gradient(circle at 82% 16%, rgba(167, 139, 250, 0.12), transparent 38%),
+      radial-gradient(circle at 50% 92%, rgba(251, 113, 133, 0.08), transparent 40%),
+      linear-gradient(180deg, #030712 0%, #06101f 50%, #030712 100%);
+  }
+  /* 晶格点阵背景叠加 */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(103, 232, 249, 0.08) 1px, transparent 1px);
+    background-size: 26px 26px;
+    opacity: 0.55;
   }
 
-  /* Three.js 全屏背景画布：最底层 + 事件穿透 */
+  /* Three.js 全屏背景画布:最底层 + 事件穿透 */
   #bg-canvas {
     position: fixed;
     inset: 0;
@@ -45,189 +55,247 @@
   .page {
     position: relative;
     z-index: 2;
-    width: min(920px, calc(100% - 32px));
+    width: min(1200px, calc(100% - 48px));
     margin: 0 auto;
-    padding: 34px 0 70px;
+    padding: 40px 0 80px;
     user-select: text;
   }
 
+  /* ===== Hero 区(全屏顶部通栏大横幅) ===== */
   .hero {
-    padding: 34px 28px 26px;
-    border: 1px solid rgba(103, 232, 249, 0.20);
+    padding: 48px 40px;
     border-radius: 28px;
-    background: linear-gradient(135deg, rgba(8, 20, 40, 0.72), rgba(15, 23, 42, 0.44));
-    box-shadow: 0 24px 70px rgba(2, 8, 23, 0.45), inset 0 1px 0 rgba(255,255,255,0.08);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    background: linear-gradient(135deg, rgba(10, 22, 44, 0.82), rgba(18, 14, 42, 0.62));
+    border: 1px solid rgba(103, 232, 249, 0.18);
+    box-shadow:
+      0 0 0 1px rgba(167, 139, 250, 0.08),
+      0 30px 80px rgba(2, 8, 23, 0.5),
+      0 0 60px rgba(103, 232, 249, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
+  .hero-content {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 40px;
+    align-items: start;
+  }
+  .hero-left { min-width: 0; }
   .eyebrow {
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    padding: 6px 12px;
+    padding: 6px 14px;
     border-radius: 999px;
     color: #bff6ff;
     background: rgba(14, 165, 233, 0.12);
-    border: 1px solid rgba(103, 232, 249, 0.22);
+    border: 1px solid rgba(103, 232, 249, 0.28);
     font-size: 12px;
-    letter-spacing: 0.18em;
+    font-weight: 700;
+    letter-spacing: 0.2em;
   }
-  h1 {
+  .hero h1 {
+    margin-top: 18px;
+    font-size: clamp(36px, 6vw, 68px);
+    line-height: 1.04;
+    letter-spacing: 0.01em;
+    font-weight: 900;
+    background: linear-gradient(135deg, #e0f2fe 0%, #67e8f9 40%, #a78bfa 80%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hero-left p {
     margin-top: 16px;
-    font-size: clamp(34px, 6vw, 64px);
-    line-height: 1.02;
-    letter-spacing: 0.02em;
-    text-shadow: 0 0 28px rgba(56, 189, 248, 0.24);
-  }
-  .hero p {
-    margin-top: 14px;
-    max-width: 720px;
+    max-width: 560px;
     color: var(--muted);
     font-size: 15px;
-    line-height: 1.9;
+    line-height: 1.85;
   }
 
-  .today-card {
-    margin-top: 18px;
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 14px;
-    align-items: start;
-    padding: 16px 18px;
-    border-radius: 20px;
-    background: rgba(2, 6, 23, 0.34);
-    border: 1px solid rgba(148, 163, 184, 0.14);
-  }
-  .today-date {
-    white-space: nowrap;
-    color: #e0f2fe;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-  }
-  .today-summary {
-    color: var(--muted);
-    line-height: 1.8;
-    font-size: 14px;
-  }
-  .today-summary strong { color: #fff; }
-
-  .filters {
-    position: sticky;
-    top: 12px;
-    z-index: 5;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin: 22px 0 24px;
-    padding: 12px;
+  /* ===== 数据统计卡片(悬浮微动效) ===== */
+  .hero-stats {
+    padding: 22px 24px;
     border-radius: 22px;
-    background: rgba(3, 10, 22, 0.62);
-    border: 1px solid rgba(103, 232, 249, 0.14);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    min-width: 268px;
+    background: rgba(4, 10, 22, 0.72);
+    border: 1px solid rgba(167, 139, 250, 0.22);
+    box-shadow:
+      0 0 30px rgba(167, 139, 250, 0.1),
+      0 16px 40px rgba(2, 8, 23, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    animation: floatY 4s ease-in-out infinite;
+  }
+  @keyframes floatY {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .stats-date {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.12em;
+    font-weight: 600;
+    margin-bottom: 14px;
+  }
+  .stats-numbers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .stat-box {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(103, 232, 249, 0.06);
+    border: 1px solid rgba(103, 232, 249, 0.16);
+  }
+  .stat-box.important {
+    background: rgba(251, 113, 133, 0.07);
+    border-color: rgba(251, 113, 133, 0.24);
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+  .stat-num {
+    font-size: 30px;
+    font-weight: 900;
+    line-height: 1.1;
+    margin-top: 4px;
+    color: var(--cyan);
+  }
+  .stat-box.important .stat-num { color: var(--coral); }
+  .stats-chart { display: flex; flex-direction: column; gap: 8px; }
+  .chart-row {
+    display: grid;
+    grid-template-columns: 44px 1fr 22px;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .chart-label { color: var(--muted); font-weight: 600; }
+  .chart-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.12);
+    overflow: hidden;
+  }
+  .chart-fill {
+    height: 100%;
+    border-radius: 999px;
+    transition: width .6s ease;
+  }
+  .chart-fill.award { background: linear-gradient(90deg, #fde68a, #f59e0b); }
+  .chart-fill.product { background: linear-gradient(90deg, #86efac, #22c55e); }
+  .chart-fill.company { background: linear-gradient(90deg, #93c5fd, #3b82f6); }
+  .chart-fill.research { background: linear-gradient(90deg, #c4b5fd, #8b5cf6); }
+  .chart-val { text-align: right; color: #e0f2fe; font-weight: 800; }
+
+  /* ===== 筛选按钮组(渐变流体按钮) ===== */
+  .filters {
+    display: flex;
+    gap: 4px;
+    margin-top: 36px;
+    padding: 8px;
+    border-radius: 18px;
+    background: rgba(3, 10, 22, 0.6);
+    border: 1px solid rgba(103, 232, 249, 0.16);
   }
   .filter-btn {
+    flex: 1;
     appearance: none;
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    background: rgba(15, 23, 42, 0.52);
-    color: rgba(226, 246, 255, 0.78);
-    border-radius: 999px;
-    padding: 9px 16px;
-    font-size: 13px;
+    border: none;
+    background: transparent;
+    color: rgba(226, 246, 255, 0.6);
+    border-radius: 12px;
+    padding: 12px 8px;
+    font-size: 14px;
     font-weight: 800;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     cursor: pointer;
-    transition: transform .18s ease, border-color .18s ease, background .18s ease, color .18s ease, box-shadow .18s ease;
+    transition: all .3s ease;
   }
   .filter-btn:hover {
-    transform: translateY(-1px);
-    border-color: rgba(103, 232, 249, 0.58);
     color: #fff;
   }
   .filter-btn.active {
-    color: #03101d;
-    background: linear-gradient(135deg, #67e8f9, #38bdf8);
-    border-color: transparent;
-    box-shadow: 0 10px 30px rgba(56, 189, 248, 0.28);
+    color: #fff;
+    background: linear-gradient(135deg, #67e8f9, #a78bfa);
+    box-shadow:
+      0 8px 24px rgba(103, 232, 249, 0.3),
+      0 0 20px rgba(167, 139, 250, 0.25);
   }
 
-  .timeline {
-    position: relative;
-    padding-left: 34px;
-  }
-  .timeline::before {
-    content: "";
-    position: absolute;
-    left: 10px;
-    top: 6px;
-    bottom: 10px;
-    width: 2px;
-    background: linear-gradient(180deg, transparent, rgba(103, 232, 249, 0.58), rgba(167, 139, 250, 0.35), transparent);
-    box-shadow: 0 0 18px rgba(56, 189, 248, 0.22);
+  /* ===== 瀑布流网格(无时间轴竖线) ===== */
+  .masonry {
+    column-count: 2;
+    column-gap: 28px;
+    margin-top: 36px;
   }
   .news-item {
-    position: relative;
-    display: grid;
-    grid-template-columns: 74px 1fr;
-    gap: 14px;
-    padding: 0 0 18px;
+    break-inside: avoid;
+    margin-bottom: 28px;
+    display: block;
   }
-  .news-item::before {
-    content: "";
-    position: absolute;
-    left: -29px;
-    top: 20px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #67e8f9;
-    box-shadow: 0 0 0 5px rgba(103, 232, 249, 0.12), 0 0 18px rgba(103, 232, 249, 0.45);
-  }
-  .news-item.important::before {
-    width: 18px;
-    height: 18px;
-    left: -32px;
-    top: 17px;
-    background: #fb7185;
-    box-shadow: 0 0 0 7px rgba(251, 113, 133, 0.13), 0 0 28px rgba(251, 113, 133, 0.58);
-  }
-  .news-time {
-    padding-top: 18px;
-    color: rgba(191, 246, 255, 0.78);
-    font-size: 13px;
-    font-weight: 900;
-    letter-spacing: 0.08em;
-  }
+  .news-item.important { column-span: all; }
+
+  /* ===== 新闻卡片通用 ===== */
   .news-card {
-    min-width: 0;
-    border-radius: 24px;
-    padding: 18px 20px;
-    background: var(--card);
-    border: 1px solid rgba(148, 163, 184, 0.16);
-    box-shadow: 0 18px 45px rgba(2, 8, 23, 0.34), inset 0 1px 0 rgba(255,255,255,0.06);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    position: relative;
+    border-radius: 20px;
+    padding: 44px 24px 20px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    box-shadow:
+      0 12px 36px rgba(2, 8, 23, 0.4),
+      0 0 24px rgba(103, 232, 249, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    transition: transform .3s ease, box-shadow .3s ease;
+    overflow: hidden;
   }
-  .news-item.important .news-card {
-    background: var(--card-strong);
-    border-color: rgba(251, 113, 133, 0.34);
-    box-shadow: 0 20px 55px rgba(80, 7, 36, 0.22), 0 0 0 1px rgba(251, 113, 133, 0.10), inset 0 1px 0 rgba(255,255,255,0.07);
+  .news-card:hover {
+    transform: translateY(-6px);
+    box-shadow:
+      0 20px 50px rgba(2, 8, 23, 0.5),
+      0 0 40px rgba(103, 232, 249, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06);
   }
+
+  /* 时间徽章(左上角,代替时间轴圆点) */
+  .time-badge {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: #bff6ff;
+    background: rgba(103, 232, 249, 0.12);
+    border: 1px solid rgba(103, 232, 249, 0.32);
+    border-radius: 999px;
+    z-index: 3;
+  }
+
+  /* 标签与重要标记 */
   .meta {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 8px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
+    position: relative;
+    z-index: 2;
   }
   .tag {
     display: inline-flex;
     align-items: center;
     border-radius: 999px;
-    padding: 4px 10px;
+    padding: 4px 11px;
     color: #03101d;
-    font-size: 12px;
-    font-weight: 950;
+    font-size: 11px;
+    font-weight: 900;
     letter-spacing: 0.08em;
   }
   .tag.award { background: linear-gradient(135deg, #fde68a, #f59e0b); }
@@ -241,33 +309,51 @@
     padding: 4px 10px;
     color: #ffe4e6;
     background: rgba(251, 113, 133, 0.14);
-    border: 1px solid rgba(251, 113, 133, 0.38);
-    font-size: 12px;
-    font-weight: 950;
+    border: 1px solid rgba(251, 113, 133, 0.4);
+    font-size: 11px;
+    font-weight: 900;
     letter-spacing: 0.12em;
   }
+
   .news-card h2 {
-    font-size: clamp(18px, 2.4vw, 24px);
-    line-height: 1.35;
-    margin-bottom: 8px;
+    font-size: clamp(17px, 2vw, 22px);
+    line-height: 1.4;
+    margin-bottom: 10px;
+    font-weight: 800;
+    position: relative;
+    z-index: 2;
   }
   .news-card p {
     color: var(--muted);
     font-size: 14px;
-    line-height: 1.9;
+    line-height: 1.85;
+    position: relative;
+    z-index: 2;
   }
+
+  /* 卡片底部(分子键渐变分割线) */
   .card-foot {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
-    margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px dashed rgba(148, 163, 184, 0.18);
+    margin-top: 16px;
+    padding-top: 14px;
+    position: relative;
+    z-index: 2;
+  }
+  .card-foot::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.4), rgba(167, 139, 250, 0.3), transparent);
   }
   .source {
-    color: rgba(224, 242, 254, 0.72);
+    color: rgba(224, 242, 254, 0.68);
     font-size: 13px;
   }
   .source-link {
@@ -277,73 +363,126 @@
     color: #07111f;
     text-decoration: none;
     border-radius: 999px;
-    padding: 8px 13px;
+    padding: 8px 14px;
     background: linear-gradient(135deg, #bae6fd, #67e8f9);
     font-size: 13px;
-    font-weight: 950;
-    transition: transform .16s ease, box-shadow .16s ease;
+    font-weight: 900;
+    transition: transform .2s ease, box-shadow .2s ease;
   }
   .source-link:hover {
     transform: translateY(-1px);
-    box-shadow: 0 12px 26px rgba(103, 232, 249, 0.22);
+    box-shadow: 0 10px 26px rgba(103, 232, 249, 0.3);
   }
+
+  /* ===== 重要新闻卡片(红荧光边框 + 多层红光) ===== */
+  .news-item.important .news-card {
+    padding: 50px 30px 24px;
+    border: 2px solid rgba(251, 113, 133, 0.45);
+    background: rgba(20, 8, 18, 0.62);
+    box-shadow:
+      0 0 0 1px rgba(251, 113, 133, 0.12),
+      0 0 40px rgba(251, 113, 133, 0.18),
+      0 0 80px rgba(251, 113, 133, 0.1),
+      0 20px 50px rgba(40, 4, 20, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+  .news-item.important .news-card:hover {
+    transform: translateY(-6px);
+    box-shadow:
+      0 0 0 1px rgba(251, 113, 133, 0.2),
+      0 0 60px rgba(251, 113, 133, 0.35),
+      0 0 110px rgba(251, 113, 133, 0.18),
+      0 26px 60px rgba(40, 4, 20, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  }
+  .news-item.important .news-card h2 {
+    font-size: clamp(22px, 3vw, 30px);
+    margin-bottom: 12px;
+  }
+  .news-item.important .time-badge {
+    background: rgba(251, 113, 133, 0.14);
+    border-color: rgba(251, 113, 133, 0.4);
+    color: #ffe4e6;
+  }
+
+  /* 分子动画装饰 - 旋转苯环(SVG) */
+  .molecule-deco {
+    position: absolute;
+    top: 18px;
+    right: 18px;
+    width: 60px;
+    height: 60px;
+    opacity: 0.3;
+    pointer-events: none;
+    z-index: 1;
+    animation: spin 8s linear infinite;
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* 空状态 */
   .empty {
     display: none;
-    padding: 40px 20px;
+    margin-top: 36px;
+    padding: 48px 24px;
     text-align: center;
     color: var(--muted);
     border: 1px dashed rgba(148, 163, 184, 0.22);
     border-radius: 22px;
-    background: rgba(2, 6, 23, 0.28);
+    background: rgba(2, 6, 23, 0.4);
+    font-size: 15px;
   }
 
-  @media (max-width: 640px) {
-    .page { width: min(100% - 20px, 920px); padding-top: 18px; }
-    .hero { padding: 24px 18px 20px; border-radius: 22px; }
-    .today-card { grid-template-columns: 1fr; }
-    .filters { top: 8px; gap: 8px; padding: 10px; }
-    .filter-btn { padding: 8px 12px; font-size: 12px; }
-    .timeline { padding-left: 26px; }
-    .timeline::before { left: 7px; }
-    .news-item { grid-template-columns: 1fr; gap: 4px; }
-    .news-item::before { left: -23px; }
-    .news-item.important::before { left: -26px; }
-    .news-time { padding-top: 0; }
-    .news-card { padding: 16px; border-radius: 20px; }
-    .card-foot { align-items: stretch; flex-direction: column; }
-    .source-link { justify-content: center; }
+  /* ===== 移动端自适应 ===== */
+  @media (max-width: 768px) {
+    .page { width: calc(100% - 24px); padding: 24px 0 60px; }
+    .hero { padding: 32px 22px 24px; border-radius: 22px; }
+    .hero-content { grid-template-columns: 1fr; gap: 24px; }
+    .hero-stats { min-width: 0; }
+    .filters {
+      overflow-x: auto;
+      flex-wrap: nowrap;
+      -webkit-overflow-scrolling: touch;
+    }
+    .filter-btn { flex: 0 0 auto; padding: 10px 16px; white-space: nowrap; }
+    .masonry { column-count: 1; }
+    .news-card { padding: 38px 18px 18px; border-radius: 18px; }
+    .news-item.important .news-card { padding: 44px 22px 20px; }
+    .hero h1 { font-size: clamp(30px, 8vw, 44px); }
   }
 </style>
 </head>
 <body>
 <canvas id="bg-canvas" aria-hidden="true"></canvas>
-
 <main class="page">
   <header class="hero">
-    <span class="eyebrow">CHEMISTRY BRIEF · TIMELINE</span>
-    <h1>化学新闻快讯</h1>
-    <p>面向化学专业学生、化工与材料研究员的每日精简资讯页。用一条纵向时间轴压缩当天化学动态，优先识别真正值得点开来源的重要事件。</p>
-    <section class="today-card" aria-label="今日摘要">
-      <div class="today-date" id="todayDate">--</div>
-      <div class="today-summary" id="todaySummary">今日摘要加载中……</div>
-    </section>
+    <div class="hero-content">
+      <div class="hero-left">
+        <span class="eyebrow">CHEMISTRY BRIEF · DAILY</span>
+        <h1>化学新闻快讯</h1>
+        <p>面向化学专业学生、化工与材料研究员的每日精简资讯。瀑布流排列,优先识别值得点开的重要事件。</p>
+      </div>
+      <div class="hero-stats" id="heroStats">
+        <!-- JS动态填充:今日统计可视化 -->
+      </div>
+    </div>
+    <nav class="filters" aria-label="新闻分类筛选">
+      <button class="filter-btn active" data-filter="all">全部</button>
+      <button class="filter-btn" data-filter="award">奖项</button>
+      <button class="filter-btn" data-filter="product">产品</button>
+      <button class="filter-btn" data-filter="company">公司</button>
+      <button class="filter-btn" data-filter="research">研究</button>
+    </nav>
   </header>
-
-  <nav class="filters" aria-label="新闻分类筛选">
-    <button class="filter-btn active" data-filter="all">全部</button>
-    <button class="filter-btn" data-filter="award">奖项</button>
-    <button class="filter-btn" data-filter="product">产品</button>
-    <button class="filter-btn" data-filter="company">公司</button>
-    <button class="filter-btn" data-filter="research">研究</button>
-  </nav>
-
-  <section class="timeline" id="timeline" aria-label="化学新闻时间轴"></section>
+  <section class="masonry" id="masonry" aria-label="化学新闻瀑布流"></section>
   <div class="empty" id="emptyState">当前分类暂无新闻。</div>
 </main>
 
 <script>
 /* =========================
-   1) 假数据区：后续只改这里即可替换新闻
+   1) 新闻数据区(完整保留)
    ========================= */
 const CATEGORY_LABEL = {
   award: "奖项",
@@ -448,27 +587,69 @@ const NEWS = [
 /* =========================
    2) 前景新闻渲染与筛选
    ========================= */
-const timelineEl = document.getElementById("timeline");
+const masonryEl = document.getElementById("masonry");
 const emptyEl = document.getElementById("emptyState");
-const summaryEl = document.getElementById("todaySummary");
-const dateEl = document.getElementById("todayDate");
+const heroStatsEl = document.getElementById("heroStats");
 
+// 格式化今日日期
 function formatToday() {
   const now = new Date();
   const week = ["日", "一", "二", "三", "四", "五", "六"][now.getDay()];
   return `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 · 星期${week}`;
 }
 
-function renderSummary() {
+// 渲染统计卡片:今日日期 + 新闻总数 + 重要数量 + 分类条形图
+function renderStats() {
+  const total = NEWS.length;
   const importantCount = NEWS.filter(item => item.important).length;
-  summaryEl.innerHTML = `今日共整理 <strong>${NEWS.length}</strong> 条化学资讯，其中 <strong>${importantCount}</strong> 条被标记为重要。建议按时间顺序快速扫读，再对重要节点点击“查看来源”。`;
+  const counts = { award: 0, product: 0, company: 0, research: 0 };
+  NEWS.forEach(item => counts[item.type]++);
+  const maxCount = Math.max(...Object.values(counts), 1);
+
+  heroStatsEl.innerHTML = `
+    <div class="stats-date">${formatToday()}</div>
+    <div class="stats-numbers">
+      <div class="stat-box">
+        <div class="stat-label">新闻总数</div>
+        <div class="stat-num">${total}</div>
+      </div>
+      <div class="stat-box important">
+        <div class="stat-label">重要事件</div>
+        <div class="stat-num">${importantCount}</div>
+      </div>
+    </div>
+    <div class="stats-chart">
+      ${Object.keys(counts).map(key => `
+        <div class="chart-row">
+          <span class="chart-label">${CATEGORY_LABEL[key]}</span>
+          <div class="chart-bar"><div class="chart-fill ${key}" style="width:${(counts[key] / maxCount * 100).toFixed(0)}%"></div></div>
+          <span class="chart-val">${counts[key]}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
+// 旋转苯环SVG装饰(重要卡片右上角)
+const BENZENE_SVG = `
+  <svg class="molecule-deco" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <polygon points="50,10 86,30 86,70 50,90 14,70 14,30" fill="none" stroke="#fb7185" stroke-width="2"/>
+    <circle cx="50" cy="10" r="6" fill="#fb7185"/>
+    <circle cx="86" cy="30" r="6" fill="#fb7185"/>
+    <circle cx="86" cy="70" r="6" fill="#fb7185"/>
+    <circle cx="50" cy="90" r="6" fill="#fb7185"/>
+    <circle cx="14" cy="70" r="6" fill="#fb7185"/>
+    <circle cx="14" cy="30" r="6" fill="#fb7185"/>
+  </svg>
+`;
+
+// 新闻卡片模板
 function newsTemplate(item) {
   return `
     <article class="news-item ${item.important ? "important" : ""}" data-type="${item.type}">
-      <div class="news-time">${item.time}</div>
       <div class="news-card">
+        <span class="time-badge">${item.time}</span>
+        ${item.important ? BENZENE_SVG : ""}
         <div class="meta">
           <span class="tag ${item.type}">${CATEGORY_LABEL[item.type]}</span>
           ${item.important ? `<span class="important-badge">重要</span>` : ""}
@@ -476,7 +657,7 @@ function newsTemplate(item) {
         <h2>${item.title}</h2>
         <p>${item.summary}</p>
         <div class="card-foot">
-          <span class="source">来源：${item.source}</span>
+          <span class="source">来源:${item.source}</span>
           <a class="source-link" href="${item.url}" target="_blank" rel="noopener noreferrer">查看来源 ↗</a>
         </div>
       </div>
@@ -484,12 +665,14 @@ function newsTemplate(item) {
   `;
 }
 
+// 渲染新闻列表
 function renderNews(filter = "all") {
   const list = filter === "all" ? NEWS : NEWS.filter(item => item.type === filter);
-  timelineEl.innerHTML = list.map(newsTemplate).join("");
+  masonryEl.innerHTML = list.map(newsTemplate).join("");
   emptyEl.style.display = list.length ? "none" : "block";
 }
 
+// 筛选按钮事件监听
 document.querySelectorAll(".filter-btn").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
@@ -498,8 +681,8 @@ document.querySelectorAll(".filter-btn").forEach(btn => {
   });
 });
 
-dateEl.textContent = formatToday();
-renderSummary();
+// 初始化
+renderStats();
 renderNews("all");
 </script>
 
