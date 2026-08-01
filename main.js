@@ -1,9 +1,60 @@
 /* =========================
    前景新闻渲染与筛选
+   数据来源优先级: /api/external(真实RSS) > /api/news.json(本地API) > 内联数据(data.js)
    ========================= */
 const masonryEl = document.getElementById("masonry");
 const emptyEl = document.getElementById("emptyState");
 const heroStatsEl = document.getElementById("heroStats");
+
+// 当前生效的数据(初始化时从API加载)
+let newsData = NEWS;
+let categoryLabels = CATEGORY_LABEL;
+let dataSource = "inline";
+
+// API 端点
+const API_EXTERNAL = "/api/external";
+const API_LOCAL = "/api/news.json";
+
+// 尝试从API获取数据,失败逐级回退
+async function loadNewsData() {
+  // 1. 尝试真实RSS API
+  try {
+    const resp = await fetch(API_EXTERNAL);
+    if (resp.ok) {
+      const json = await resp.json();
+      if (json.code === 200 && json.data && json.data.news && json.data.news.length > 0) {
+        newsData = json.data.news;
+        categoryLabels = json.data.categories || CATEGORY_LABEL;
+        dataSource = json.source || "live-rss";
+        console.log(`[数据源] 真实RSS API: ${newsData.length} 条新闻`);
+        return;
+      }
+    }
+  } catch (e) {
+    console.log("[数据源] 外部API不可用,尝试本地API...");
+  }
+
+  // 2. 尝试本地JSON API
+  try {
+    const resp = await fetch(API_LOCAL);
+    if (resp.ok) {
+      const json = await resp.json();
+      if (json.code === 200 && json.data && json.data.news) {
+        newsData = json.data.news;
+        categoryLabels = json.data.categories || CATEGORY_LABEL;
+        dataSource = "local-api";
+        console.log(`[数据源] 本地API: ${newsData.length} 条新闻`);
+        return;
+      }
+    }
+  } catch (e) {
+    console.log("[数据源] 本地API不可用,使用内联数据");
+  }
+
+  // 3. 回退到内联数据(data.js)
+  dataSource = "inline";
+  console.log(`[数据源] 内联数据: ${newsData.length} 条新闻`);
+}
 
 // 格式化今日日期
 function formatToday() {
@@ -14,11 +65,13 @@ function formatToday() {
 
 // 渲染统计卡片:今日日期 + 新闻总数 + 重要数量 + 分类条形图
 function renderStats() {
-  const total = NEWS.length;
-  const importantCount = NEWS.filter(item => item.important).length;
+  const total = newsData.length;
+  const importantCount = newsData.filter(item => item.important).length;
   const counts = { award: 0, product: 0, company: 0, research: 0 };
-  NEWS.forEach(item => counts[item.type]++);
+  newsData.forEach(item => { if (counts[item.type] !== undefined) counts[item.type]++; });
   const maxCount = Math.max(...Object.values(counts), 1);
+
+  const sourceLabel = dataSource === "live-rss" ? "实时RSS" : dataSource === "local-api" ? "本地API" : "内置数据";
 
   heroStatsEl.innerHTML = `
     <div class="stats-date">${formatToday()}</div>
@@ -35,12 +88,13 @@ function renderStats() {
     <div class="stats-chart">
       ${Object.keys(counts).map(key => `
         <div class="chart-row">
-          <span class="chart-label">${CATEGORY_LABEL[key]}</span>
+          <span class="chart-label">${categoryLabels[key] || key}</span>
           <div class="chart-bar"><div class="chart-fill ${key}" style="width:${(counts[key] / maxCount * 100).toFixed(0)}%"></div></div>
           <span class="chart-val">${counts[key]}</span>
         </div>
       `).join("")}
     </div>
+    <div style="margin-top:12px;font-size:11px;color:rgba(210,232,255,0.4);text-align:center;">数据来源:${sourceLabel}</div>
   `;
 }
 
@@ -65,7 +119,7 @@ function newsTemplate(item) {
         <span class="time-badge">${item.time}</span>
         ${item.important ? BENZENE_SVG : ""}
         <div class="meta">
-          <span class="tag ${item.type}">${CATEGORY_LABEL[item.type]}</span>
+          <span class="tag ${item.type}">${categoryLabels[item.type] || item.type}</span>
           ${item.important ? `<span class="important-badge">重要</span>` : ""}
         </div>
         <h2>${item.title}</h2>
@@ -81,7 +135,7 @@ function newsTemplate(item) {
 
 // 渲染新闻列表
 function renderNews(filter = "all") {
-  const list = filter === "all" ? NEWS : NEWS.filter(item => item.type === filter);
+  const list = filter === "all" ? newsData : newsData.filter(item => item.type === filter);
   masonryEl.innerHTML = list.map(newsTemplate).join("");
   emptyEl.style.display = list.length ? "none" : "block";
 }
@@ -95,6 +149,9 @@ document.querySelectorAll(".filter-btn").forEach(btn => {
   });
 });
 
-// 初始化
-renderStats();
-renderNews("all");
+// 初始化:先加载API数据,再渲染
+(async function init() {
+  await loadNewsData();
+  renderStats();
+  renderNews("all");
+})();
