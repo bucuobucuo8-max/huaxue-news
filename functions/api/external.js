@@ -77,10 +77,10 @@ function classifyNews(title, desc, defaultType) {
 // 提取文章链接(支持 RDF:about 属性 fallback)
 function extractLink(item) {
   let link = extractField(item, 'link');
-  // 如果 link 为空或指向 RSS feed,尝试 rdf:about 属性
-  if (!link || link.includes('/rss/') || link.includes('feeds.nature.com')) {
+  // 如果 link 为空或不是文章URL,尝试 rdf:about 属性
+  if (!link || link.includes('/rss/') || link.includes('feeds.nature.com') || link.includes('.png') || link.includes('.jpg') || !link.includes('/articles/')) {
     const about = item.match(/rdf:about="([^"]+)"/i);
-    if (about && about[1]) link = about[1];
+    if (about && about[1] && about[1].includes('/articles/')) link = about[1];
   }
   return link || '';
 }
@@ -94,6 +94,16 @@ function extractDescription(item) {
     if (dcDesc) desc = dcDesc[1];
   }
   return desc || '';
+}
+
+// 清理摘要:移除HTML标签和Nature元数据前缀
+function cleanSummary(text) {
+  let cleaned = text.replace(/<[^>]+>/g, '').trim();
+  // 移除 "Nature Chemistry, Published online: ... doi:xxx" 前缀
+  cleaned = cleaned.replace(/^Nature\s+\w+,\s*Published online:[^]*?doi:[^\s]*\s*/i, '');
+  // 移除残留的doi链接
+  cleaned = cleaned.replace(/^doi:[^\s]*\s*/i, '');
+  return cleaned.substring(0, 200).trim();
 }
 
 // 判断重要性
@@ -115,7 +125,7 @@ function parseRSS(xml, defaultType, sourceName, startIndex) {
     if (!title || title.length < 5) continue;
     const link = cleanHtml(extractLink(item));
     const rawDesc = extractDescription(item);
-    const desc = cleanHtml(rawDesc).substring(0, 200);
+    const desc = cleanSummary(rawDesc);
     const time = parseTime(item, startIndex + count);
     const type = classifyNews(title, desc, defaultType);
     const important = isImportant(title, desc);
