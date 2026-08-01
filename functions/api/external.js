@@ -31,13 +31,18 @@ function parseTime(item, fallbackIndex) {
   if (dateStr) {
     const d = new Date(dateStr);
     if (!isNaN(d.getTime())) {
-      return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      const h = d.getUTCHours();
+      const m = d.getUTCMinutes();
+      // 如果解析出 00:00,可能是只有日期没有时间的 RSS,使用 fallback
+      if (h !== 0 || m !== 0) {
+        return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+      }
     }
   }
-  // 解析失败:基于当前时间生成递减序列
+  // fallback:基于当前 UTC 时间生成递减序列
   const now = new Date();
-  let h = now.getHours();
-  let m = now.getMinutes() - fallbackIndex * 15;
+  let h = now.getUTCHours();
+  let m = now.getUTCMinutes() - fallbackIndex * 12;
   while (m < 0) { m += 60; h = (h - 1 + 24) % 24; }
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
