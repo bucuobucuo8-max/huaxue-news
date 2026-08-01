@@ -74,24 +74,48 @@ function classifyNews(title, desc, defaultType) {
   return defaultType;
 }
 
+// 提取文章链接(支持 RDF:about 属性 fallback)
+function extractLink(item) {
+  let link = extractField(item, 'link');
+  // 如果 link 为空或指向 RSS feed,尝试 rdf:about 属性
+  if (!link || link.includes('/rss/') || link.includes('feeds.nature.com')) {
+    const about = item.match(/rdf:about="([^"]+)"/i);
+    if (about && about[1]) link = about[1];
+  }
+  return link || '';
+}
+
+// 提取描述(支持 content:encoded / dc:description)
+function extractDescription(item) {
+  let desc = extractField(item, 'description');
+  if (!desc) desc = extractField(item, 'content:encoded');
+  if (!desc) {
+    const dcDesc = item.match(/<dc:description[^>]*>([\s\S]*?)<\/dc:description>/i);
+    if (dcDesc) desc = dcDesc[1];
+  }
+  return desc || '';
+}
+
 // 判断重要性
 function isImportant(title, desc) {
   const text = (title + ' ' + desc).toLowerCase();
   return /breakthrough|milestone|nobel|first|critical|discovery|unprecedent|record|突破|首次|重大|里程碑/.test(text);
 }
 
-// 解析 RSS XML 为新闻数组
+// 解析 RSS XML 为新闻数组(支持 RSS 2.0 和 RDF/RSS 1.0)
 function parseRSS(xml, defaultType, sourceName, startIndex) {
   const items = [];
-  const itemRegex = /<item[\s\S]*?>([\s\S]*?)<\/item>/gi;
+  // 匹配 <item> 和 <item rdf:about="...">
+  const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/gi;
   let match;
   let count = 0;
-  while ((match = itemRegex.exec(xml)) !== null && count < 4) {
+  while ((match = itemRegex.exec(xml)) !== null && count < 5) {
     const item = match[1];
     const title = cleanHtml(extractField(item, 'title'));
-    if (!title) continue;
-    const link = extractField(item, 'link') || extractField(item, 'guid');
-    const desc = cleanHtml(extractField(item, 'description')).substring(0, 200);
+    if (!title || title.length < 5) continue;
+    const link = cleanHtml(extractLink(item));
+    const rawDesc = extractDescription(item);
+    const desc = cleanHtml(rawDesc).substring(0, 200);
     const time = parseTime(item, startIndex + count);
     const type = classifyNews(title, desc, defaultType);
     const important = isImportant(title, desc);
@@ -99,7 +123,7 @@ function parseRSS(xml, defaultType, sourceName, startIndex) {
       time,
       type,
       title,
-      summary: desc || '点击查看详情',
+      summary: desc || title,
       source: sourceName,
       url: link,
       important,
