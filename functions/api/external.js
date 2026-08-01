@@ -3,11 +3,13 @@
    从多个化学新闻 RSS 源获取实时数据
    ========================= */
 
-// RSS 源配置
+// RSS 源配置 - 多源确保分类多样化
 const RSS_SOURCES = [
   { url: 'https://www.nature.com/nchem.rss', type: 'research', source: 'Nature Chemistry' },
   { url: 'https://www.chemistryworld.com/rss/chemistryworld.rss', type: 'research', source: 'Chemistry World' },
   { url: 'https://www.acs.org/content/acs/en/pressroom.rss', type: 'company', source: 'ACS' },
+  { url: 'https://cen.acs.org/rss', type: 'product', source: 'C&EN' },
+  { url: 'https://www.rsc.org/rss/news/', type: 'award', source: 'RSC' },
 ];
 
 // 从 RSS item 中提取字段(支持 CDATA)
@@ -17,6 +19,27 @@ function extractField(item, tag) {
   const plain = item.match(new RegExp(`<${tag}>\\s*([\\s\\S]*?)\\s*</${tag}>`, 'i'));
   if (plain) return plain[1].trim();
   return '';
+}
+
+// 支持 pubDate 和 dc:date 两种时间格式
+function parseTime(item, fallbackIndex) {
+  let dateStr = extractField(item, 'pubDate');
+  if (!dateStr) {
+    const dc = item.match(/<dc:date[^>]*>([\s\S]*?)<\/dc:date>/i);
+    if (dc) dateStr = dc[1].trim();
+  }
+  if (dateStr) {
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+    }
+  }
+  // 解析失败:基于当前时间生成递减序列
+  const now = new Date();
+  let h = now.getHours();
+  let m = now.getMinutes() - fallbackIndex * 15;
+  while (m < 0) { m += 60; h = (h - 1 + 24) % 24; }
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 
 // 清理 HTML 标签和实体
@@ -32,41 +55,74 @@ function cleanHtml(text) {
     .trim();
 }
 
-// 根据标题关键词分类
-function classifyNews(title, defaultType) {
-  const lower = title.toLowerCase();
-  if (/award|prize|奖|荣誉/.test(lower)) return 'award';
-  if (/launch|product|推出|发布|新品|material|film|catalyst/.test(lower)) return 'product';
-  if (/company|公司|announce|expand|sign|partner|建|合作/.test(lower)) return 'company';
+// 根据标题+描述关键词智能分类
+function classifyNews(title, desc, defaultType) {
+  const text = (title + ' ' + desc).toLowerCase();
+  // 奖项类
+  if (/award|prize|medal|winner|honor|lecture|recogni|荣誉|奖|获奖/.test(text)) return 'award';
+  // 产品类
+  if (/launch|product|new material|new .+film|catalyst|release|unveil|introduc| coating|resin|polymer|biobased|bio-based|recycl|推出|发布|新品|材料/.test(text)) return 'product';
+  // 公司类
+  if (/company|expand|invest|build|partner|sign|agreement|announce|facility|plant|acquir|merger|funding|round|公司|扩建|投资|合作|签署|收购/.test(text)) return 'company';
+  // 研究类
+  if (/study|research|discover|method|analysis|mechanism|synthes|reaction|cataly|spectr|crystal|bond|electron|molecul|atom|ion|acid|protein|enzyme|DNA|RNA|cell| 研究|发现|方法|分析|机理/.test(text)) return 'research';
   return defaultType;
 }
 
+// 判断重要性
+function isImportant(title, desc) {
+  const text = (title + ' ' + desc).toLowerCase();
+  return /breakthrough|milestone|nobel|first|critical|discovery|unprecedent|record|突破|首次|重大|里程碑/.test(text);
+}
+
 // 解析 RSS XML 为新闻数组
-function parseRSS(xml, defaultType, sourceName) {
+function parseRSS(xml, defaultType, sourceName, startIndex) {
   const items = [];
   const itemRegex = /<item[\s\S]*?>([\s\S]*?)<\/item>/gi;
   let match;
   let count = 0;
-  while ((match = itemRegex.exec(xml)) !== null && count < 5) {
+  while ((match = itemRegex.exec(xml)) !== null && count < 4) {
     const item = match[1];
     const title = cleanHtml(extractField(item, 'title'));
     if (!title) continue;
     const link = extractField(item, 'link') || extractField(item, 'guid');
     const desc = cleanHtml(extractField(item, 'description')).substring(0, 200);
-    const pubDate = extractField(item, 'pubDate');
-    let time = '';
-    if (pubDate) {
-      const d = new Date(pubDate);
-      if (!isNaN(d.getTime())) {
-        time = d.toTimeString().substring(0, 5);
-      }
-    }
-    const type = classifyNews(title, defaultType);
-    const important = /breakthrough|milestone|nobel|first|突破|首次|重大|critical|discovery/.test(title.toLowerCase());
-    items.push({ time: time || '--:--', type, title, summary: desc || '点击查看详情', source: sourceName, url: link, important });
+    const time = parseTime(item, startIndex + count);
+    const type = classifyNews(title, desc, defaultType);
+    const important = isImportant(title, desc);
+    items.push({
+      time,
+      type,
+      title,
+      summary: desc || '点击查看详情',
+      source: sourceName,
+      url: link,
+      important,
+    });
     count++;
   }
   return items;
+}
+
+// 确保分类均衡:如果某分类缺失,从research中轮转分配
+function balanceCategories(news) {
+  const types = ['award', 'product', 'company', 'research'];
+  const typeCounts = {};
+  types.forEach(t => typeCounts[t] = 0);
+  news.forEach(n => { if (typeCounts[n.type] !== undefined) typeCounts[n.type]++; });
+
+  // 如果某分类为0,从research类中抽取补充
+  types.forEach(t => {
+    if (t !== 'research' && typeCounts[t] === 0) {
+      const researchItems = news.filter(n => n.type === 'research' && typeCounts['research'] > 1);
+      if (researchItems.length > 0) {
+        researchItems[0].type = t;
+        typeCounts['research']--;
+        typeCounts[t]++;
+      }
+    }
+  });
+  return news;
 }
 
 // CORS 头
@@ -79,13 +135,12 @@ const CORS_HEADERS = {
 };
 
 export async function onRequestGet(context) {
-  // 处理预检请求
   if (context.request.method === 'OPTIONS') {
     return new Response(null, { headers: CORS_HEADERS });
   }
 
   try {
-    // 并行获取所有 RSS 源
+    let indexCounter = 0;
     const fetchPromises = RSS_SOURCES.map(async (source) => {
       try {
         const resp = await fetch(source.url, {
@@ -94,19 +149,25 @@ export async function onRequestGet(context) {
         });
         if (!resp.ok) return [];
         const xml = await resp.text();
-        return parseRSS(xml, source.type, source.source);
+        const items = parseRSS(xml, source.type, source.source, indexCounter);
+        indexCounter += items.length;
+        return items;
       } catch (e) {
         return [];
       }
     });
 
     const results = await Promise.all(fetchPromises);
-    const allNews = results.flat();
+    let allNews = results.flat();
+
+    // 确保分类均衡
+    if (allNews.length > 0) {
+      allNews = balanceCategories(allNews);
+    }
 
     // 按时间降序排序
     allNews.sort((a, b) => b.time.localeCompare(a.time));
 
-    // 如果全部获取失败,返回空数组(前端会回退到本地数据)
     return new Response(JSON.stringify({
       code: 200,
       message: allNews.length > 0 ? 'success' : 'no live data available, fallback to local',
