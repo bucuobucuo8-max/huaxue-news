@@ -105,8 +105,8 @@ function isImportant(title, desc) {
 // 解析 RSS XML 为新闻数组(支持 RSS 2.0 和 RDF/RSS 1.0)
 function parseRSS(xml, defaultType, sourceName, startIndex) {
   const items = [];
-  // 匹配 <item> 和 <item rdf:about="...">
-  const itemRegex = /<item[^>]*>([\s\S]*?)<\/item>/gi;
+  // 匹配 <item> 和 <item rdf:about="...">,不匹配 <items>
+  const itemRegex = /<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi;
   let match;
   let count = 0;
   while ((match = itemRegex.exec(xml)) !== null && count < 5) {
