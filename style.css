@@ -90,10 +90,16 @@ body::before {
   line-height: 1.04;
   letter-spacing: 0.01em;
   font-weight: 900;
-  background: linear-gradient(135deg, #cffafe 0%, #7dd3fc 35%, #a78bfa 70%, #c4b5fd 100%);
+  background: linear-gradient(90deg, #cffafe, #7dd3fc, #a78bfa, #c4b5fd, #67e8f9, #cffafe);
+  background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  animation: gradientFlow 5s linear infinite;
+}
+@keyframes gradientFlow {
+  0% { background-position: 0% center; }
+  100% { background-position: 200% center; }
 }
 .hero-left p {
   margin-top: 16px;
@@ -378,10 +384,12 @@ body::before {
   line-height: 1.15;
   font-weight: 900;
   margin-bottom: 18px;
-  background: linear-gradient(135deg, #cffafe 0%, #7dd3fc 30%, #a78bfa 65%, #c4b5fd 100%);
+  background: linear-gradient(90deg, #cffafe, #7dd3fc, #a78bfa, #c4b5fd, #67e8f9, #cffafe);
+  background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+  animation: gradientFlow 5s linear infinite;
 }
 .story-title-md {
   font-size: clamp(22px, 2.8vw, 32px);
