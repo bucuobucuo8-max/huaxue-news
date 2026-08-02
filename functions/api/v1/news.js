@@ -86,22 +86,51 @@ export async function onRequestGet(context) {
       filtered = filtered.slice(0, limit);
     }
 
-    // 返回结果
+    // 给每条新闻加 id 和结构化分类
+    const newsWithId = filtered.map((n, i) => ({
+      id: i + 1,
+      time: n.time,
+      category: { key: n.type, label: categories[n.type] || n.type },
+      title: n.title,
+      summary: n.summary,
+      source: n.source,
+      url: n.url,
+      important: n.important || false,
+    }));
+
+    // 按分类分组
+    const grouped = {};
+    Object.keys(categories).forEach(key => {
+      grouped[key] = newsWithId.filter(n => n.category.key === key);
+    });
+
+    // 分类统计
+    const categoryStats = {};
+    Object.keys(categories).forEach(key => {
+      categoryStats[key] = {
+        label: categories[key],
+        count: grouped[key].length,
+      };
+    });
+
+    // 返回结构化结果
     return new Response(JSON.stringify({
       code: 200,
       message: 'success',
-      source,
-      count: filtered.length,
-      bannerImage,
-      query: {
-        category: category || null,
-        limit: limit || null,
-        important: important || null,
+      meta: {
+        source,
+        fetchedAt: new Date().toISOString(),
+        total: newsWithId.length,
+        bannerImage,
+        query: {
+          category: category || null,
+          limit: limit || null,
+          important: important || null,
+        },
       },
-      data: {
-        categories,
-        news: filtered,
-      },
+      categories: categoryStats,
+      news: newsWithId,
+      grouped,
     }), { headers: CORS_HEADERS });
 
   } catch (e) {
