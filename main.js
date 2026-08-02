@@ -1,6 +1,6 @@
 /* =========================
    前景新闻渲染与筛选
-   数据来源优先级: /api/external(真实RSS) > /api/news.json(本地API) > 内联数据(data.js)
+   数据来源优先级: /api/v1/news(结构化API) > /api/news.json(本地API) > 内联数据(data.js)
    ========================= */
 const masonryEl = document.getElementById("masonry");
 const emptyEl = document.getElementById("emptyState");
@@ -13,27 +13,33 @@ let dataSource = "inline";
 let bannerImageUrl = "";
 
 // API 端点
-const API_EXTERNAL = "/api/external";
+const API_V1 = "/api/v1/news";
 const API_LOCAL = "/api/news.json";
 
 // 尝试从API获取数据,失败逐级回退
 async function loadNewsData() {
-  // 1. 尝试真实RSS API
+  // 1. 尝试 v1 结构化 API
   try {
-    const resp = await fetch(API_EXTERNAL);
+    const resp = await fetch(API_V1);
     if (resp.ok) {
       const json = await resp.json();
-      if (json.code === 200 && json.data && json.data.news && json.data.news.length > 0) {
-        newsData = json.data.news;
-        categoryLabels = json.data.categories || CATEGORY_LABEL;
-        dataSource = json.source || "live-rss";
-        bannerImageUrl = json.bannerImage || "";
-        console.log(`[数据源] 真实RSS API: ${newsData.length} 条新闻, bannerImage: ${bannerImageUrl ? "yes" : "no"}`);
+      if (json.code === 200 && json.news && json.news.length > 0) {
+        // 适配新结构:category:{key,label} -> type + categoryLabels
+        newsData = json.news.map(n => ({
+          ...n,
+          type: n.category.key,
+        }));
+        const catLabels = {};
+        Object.keys(json.categories).forEach(k => { catLabels[k] = json.categories[k].label; });
+        categoryLabels = catLabels;
+        dataSource = json.meta.source || "live-rss";
+        bannerImageUrl = json.meta.bannerImage || "";
+        console.log(`[数据源] v1 API: ${newsData.length} 条新闻, bannerImage: ${bannerImageUrl ? "yes" : "no"}`);
         return;
       }
     }
   } catch (e) {
-    console.log("[数据源] 外部API不可用,尝试本地API...");
+    console.log("[数据源] v1 API不可用,尝试本地API...");
   }
 
   // 2. 尝试本地JSON API
