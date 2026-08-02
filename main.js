@@ -156,13 +156,11 @@ document.querySelectorAll(".filter-btn").forEach(btn => {
   await loadNewsData();
   renderStats();
   renderNews("all");
-  // 如果API返回了banner图片,替换SVG
+  // 使用本地图片作为banner
   if (bannerImageUrl) {
     const banner = document.querySelector(".hero-banner");
     if (banner) {
-      const svgEl = banner.querySelector("svg");
-      const svgBackup = svgEl ? svgEl.outerHTML : "";
-      banner.innerHTML = `<img src="${bannerImageUrl}" alt="精选新闻图片" loading="lazy" onerror="this.parentElement.innerHTML='${svgBackup.replace(/'/g, "&#39;")}'" />`;
+      banner.innerHTML = `<img src="609c4f61-830b-4ebc-aee4-94e4f0bbcfe1.png" alt="精选化学图片" loading="lazy" />`;
     }
   }
 })();
