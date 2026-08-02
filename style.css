@@ -90,7 +90,7 @@ body::before {
   line-height: 1.04;
   letter-spacing: 0.01em;
   font-weight: 900;
-  background: linear-gradient(135deg, #e0f2fe 0%, #67e8f9 40%, #a78bfa 80%);
+  background: linear-gradient(135deg, #cffafe 0%, #7dd3fc 35%, #a78bfa 70%, #c4b5fd 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -103,23 +103,22 @@ body::before {
   line-height: 1.85;
 }
 
-/* 精选横幅图片 */
+/* 精选横幅图片 - 全宽到页面右边缘 */
 .hero-banner {
-  margin-top: 24px;
-  border-radius: 18px;
+  margin-top: 32px;
+  margin-left: -48px;
+  margin-right: -48px;
+  border-radius: 0;
   overflow: hidden;
-  border: 1px solid rgba(103, 232, 249, 0.25);
-  box-shadow:
-    0 0 30px rgba(103, 232, 249, 0.12),
-    0 12px 36px rgba(2, 8, 23, 0.4);
+  border: none;
+  border-top: 1px solid rgba(103, 232, 249, 0.15);
+  border-bottom: 1px solid rgba(103, 232, 249, 0.15);
+  box-shadow: none;
   transition: transform .3s ease, box-shadow .3s ease;
 }
 .hero-banner:hover {
-  transform: translateY(-4px);
-  box-shadow:
-    0 0 50px rgba(103, 232, 249, 0.25),
-    0 0 80px rgba(167, 139, 250, 0.15),
-    0 16px 44px rgba(2, 8, 23, 0.5);
+  transform: none;
+  box-shadow: none;
 }
 .hero-banner img {
   display: block;
@@ -379,7 +378,7 @@ body::before {
   line-height: 1.05;
   font-weight: 900;
   margin-bottom: 28px;
-  background: linear-gradient(135deg, #e0f2fe, #67e8f9 50%, #a78bfa);
+  background: linear-gradient(135deg, #cffafe 0%, #7dd3fc 30%, #a78bfa 65%, #c4b5fd 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
