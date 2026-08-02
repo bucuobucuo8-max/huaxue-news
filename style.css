@@ -128,6 +128,36 @@ body::before {
   width: 100%;
   height: auto;
 }
+.banner-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 18px;
+}
+/* SVG 分子动画 */
+@keyframes bannerSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes bannerFloat1 {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes bannerFloat2 {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(6px); }
+}
+.banner-spin {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: bannerSpin 12s linear infinite;
+}
+.banner-float1 {
+  animation: bannerFloat1 3.5s ease-in-out infinite;
+}
+.banner-float2 {
+  animation: bannerFloat2 4s ease-in-out infinite;
+}
 
 /* ===== 数据统计卡片(悬浮微动效) ===== */
 .hero-stats {
