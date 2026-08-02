@@ -44,33 +44,31 @@ body::before {
   opacity: 0.82;
 }
 
-/* 前景新闻内容层 */
+/* 前景新闻内容层 - 全屏横版 */
 .page {
   position: relative;
   z-index: 2;
-  width: min(1200px, calc(100% - 48px));
-  margin: 0 auto;
-  padding: 40px 0 80px;
+  width: 100%;
+  margin: 0;
+  padding: 0 0 80px;
   user-select: text;
 }
 
-/* ===== Hero 区(全屏顶部通栏大横幅) ===== */
+/* ===== Hero 区(全屏顶部,无圆角) ===== */
 .hero {
-  padding: 48px 40px;
-  border-radius: 28px;
-  background: linear-gradient(135deg, rgba(10, 22, 44, 0.82), rgba(18, 14, 42, 0.62));
-  border: 1px solid rgba(103, 232, 249, 0.18);
-  box-shadow:
-    0 0 0 1px rgba(167, 139, 250, 0.08),
-    0 30px 80px rgba(2, 8, 23, 0.5),
-    0 0 60px rgba(103, 232, 249, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: 60px 48px 40px;
+  border-radius: 0;
+  background: linear-gradient(180deg, rgba(3, 7, 18, 0.85), rgba(6, 16, 31, 0.5));
+  border: none;
+  border-bottom: 1px solid rgba(103, 232, 249, 0.15);
+  box-shadow: none;
 }
 .hero-content {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 40px;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 60px;
   align-items: start;
+  max-width: 100%;
 }
 .hero-left { min-width: 0; }
 .eyebrow {
@@ -239,15 +237,17 @@ body::before {
 .chart-fill.research { background: linear-gradient(90deg, #c4b5fd, #8b5cf6); }
 .chart-val { text-align: right; color: #e0f2fe; font-weight: 800; }
 
-/* ===== 筛选按钮组(渐变流体按钮) ===== */
+/* ===== 筛选按钮组(全宽) ===== */
 .filters {
   display: flex;
-  gap: 4px;
-  margin-top: 36px;
-  padding: 8px;
-  border-radius: 18px;
-  background: rgba(3, 10, 22, 0.6);
-  border: 1px solid rgba(103, 232, 249, 0.16);
+  gap: 6px;
+  margin-top: 40px;
+  padding: 10px;
+  border-radius: 0;
+  background: rgba(3, 10, 22, 0.5);
+  border: none;
+  border-top: 1px solid rgba(103, 232, 249, 0.12);
+  border-bottom: 1px solid rgba(103, 232, 249, 0.12);
 }
 .filter-btn {
   flex: 1;
@@ -274,15 +274,16 @@ body::before {
     0 0 20px rgba(167, 139, 250, 0.25);
 }
 
-/* ===== 自由杂志式布局(打破卡片格局) ===== */
+/* ===== 横版多列布局(充分利用屏幕宽度) ===== */
 .news-grid {
-  margin-top: 48px;
+  margin-top: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 48px 40px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 40px 32px;
+  padding: 48px;
 }
 
-/* 第一条:全宽,杂志封面 */
+/* 第一条:跨3列全宽 */
 .story-0 {
   grid-column: 1 / -1;
   position: relative;
@@ -290,32 +291,23 @@ body::before {
   border-top: 1px solid rgba(103, 232, 249, 0.2);
   border-bottom: 1px solid rgba(167, 139, 250, 0.15);
 }
-.story-0::before {
-  content: "";
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, #67e8f9, #a78bfa, transparent);
-  box-shadow: 0 0 12px rgba(103, 232, 249, 0.4);
-}
 
-/* 第二条:左半屏 */
+/* 第二条:跨2列 */
 .story-1 {
-  grid-column: 1;
+  grid-column: 1 / 3;
   padding-left: 24px;
   border-left: 2px solid;
   border-image: linear-gradient(180deg, #67e8f9, transparent) 1;
 }
 
-/* 第三条:右半屏,偏移上移 */
+/* 第三条:跨1列 */
 .story-2 {
-  grid-column: 2;
-  margin-top: -60px;
-  padding-top: 24px;
-  border-top: 1px solid rgba(167, 139, 250, 0.2);
+  grid-column: 3;
+  padding-top: 0;
+  border-top: none;
 }
 
-/* 第四条:全宽,左右分栏 */
+/* 第四条:跨3列全宽 */
 .story-3 {
   grid-column: 1 / -1;
   padding: 36px 0;
@@ -324,27 +316,22 @@ body::before {
 }
 .story-split {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
-  gap: 40px;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 48px;
   align-items: start;
 }
 
-/* 第五条+:居中引言 */
+/* 第五条+:各占1列 */
+.story-4 { grid-column: 1; }
+.story-5 { grid-column: 2; }
+.story-6 { grid-column: 3; }
+.story-7 { grid-column: 1; }
+.story-8 { grid-column: 2; }
+.story-9 { grid-column: 3; }
+
 .story-4, .story-5, .story-6, .story-7, .story-8, .story-9 {
-  grid-column: 1 / -1;
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 28px 0;
-  text-align: center;
+  padding: 24px 0;
   border-top: 1px dashed rgba(148, 163, 184, 0.15);
-}
-.story-4::before, .story-5::before {
-  content: "❝";
-  display: block;
-  font-size: 40px;
-  color: rgba(103, 232, 249, 0.2);
-  line-height: 1;
-  margin-bottom: 8px;
 }
 
 /* ===== 通用故事元素 ===== */
@@ -489,8 +476,8 @@ body::before {
 
 /* ===== 移动端自适应 ===== */
 @media (max-width: 768px) {
-  .page { width: calc(100% - 24px); padding: 24px 0 60px; }
-  .hero { padding: 32px 22px 24px; border-radius: 22px; }
+  .page { width: 100%; padding: 0 0 60px; }
+  .hero { padding: 32px 22px 24px; }
   .hero-content { grid-template-columns: 1fr; gap: 24px; }
   .hero-stats { min-width: 0; }
   .filters {
@@ -499,10 +486,9 @@ body::before {
     -webkit-overflow-scrolling: touch;
   }
   .filter-btn { flex: 0 0 auto; padding: 10px 16px; white-space: nowrap; }
-  .news-grid { grid-template-columns: 1fr; gap: 32px; }
-  .story-1, .story-2, .story-3 { grid-column: 1; margin-top: 0; }
+  .news-grid { grid-template-columns: 1fr; gap: 32px; padding: 24px; }
+  .story-1, .story-2, .story-3, .story-4, .story-5, .story-6 { grid-column: 1; }
   .story-split { grid-template-columns: 1fr; gap: 16px; }
-  .story-2 { padding-top: 0; border-top: none; }
   .hero h1 { font-size: clamp(30px, 8vw, 44px); }
   .story-title-xl { font-size: clamp(38px, 11vw, 64px); }
 }
