@@ -113,32 +113,108 @@ const BENZENE_SVG = `
   </svg>
 `;
 
-// 新闻卡片模板
-function newsTemplate(item) {
-  return `
-    <article class="news-item ${item.important ? "important" : ""}" data-type="${item.type}">
-      <div class="news-card">
-        <span class="time-badge">${item.time}</span>
-        ${item.important ? BENZENE_SVG : ""}
-        <div class="meta">
-          <span class="tag ${item.type}">${categoryLabels[item.type] || item.type}</span>
-          ${item.important ? `<span class="important-badge">重要</span>` : ""}
+// 新闻模板 - 根据序号使用不同布局,打破卡片格局
+function newsTemplate(item, index) {
+  const layoutClass = `story story-${index}`;
+  const tagHtml = `<span class="story-tag ${item.type}">${categoryLabels[item.type] || item.type}</span>`;
+  const importantHtml = item.important ? `<span class="story-important">重要</span>` : "";
+  const decoHtml = item.important ? BENZENE_SVG : "";
+
+  if (index === 0) {
+    // 第一条:全宽大标题,杂志封面风格
+    return `
+      <article class="${layoutClass}" data-type="${item.type}">
+        ${decoHtml}
+        <div class="story-meta-line">
+          <span class="story-time">${item.time}</span>
+          ${tagHtml}
+          ${importantHtml}
         </div>
-        <h2>${item.title}</h2>
-        <p>${item.summary}</p>
-        <div class="card-foot">
-          <span class="source">来源:${item.source}</span>
-          <a class="source-link" href="${item.url}" target="_blank" rel="noopener noreferrer">查看来源 ↗</a>
+        <h2 class="story-title-xl">${item.title}</h2>
+        <p class="story-summary-lg">${item.summary}</p>
+        <div class="story-foot">
+          <span class="story-source">${item.source}</span>
+          <a class="story-link" href="${item.url}" target="_blank" rel="noopener noreferrer">阅读全文 ↗</a>
         </div>
-      </div>
-    </article>
-  `;
+      </article>
+    `;
+  } else if (index === 1) {
+    // 第二条:左半屏,左霓虹竖线
+    return `
+      <article class="${layoutClass}" data-type="${item.type}">
+        <div class="story-meta-line">
+          <span class="story-time">${item.time}</span>
+          ${tagHtml}
+        </div>
+        <h2 class="story-title-md">${item.title}</h2>
+        <p class="story-summary">${item.summary}</p>
+        <div class="story-foot">
+          <span class="story-source">${item.source}</span>
+          <a class="story-link" href="${item.url}" target="_blank" rel="noopener noreferrer">阅读全文 ↗</a>
+        </div>
+      </article>
+    `;
+  } else if (index === 2) {
+    // 第三条:右半屏,偏移上移,渐变顶线
+    return `
+      <article class="${layoutClass}" data-type="${item.type}">
+        <div class="story-meta-line">
+          <span class="story-time">${item.time}</span>
+          ${tagHtml}
+        </div>
+        <h2 class="story-title-md">${item.title}</h2>
+        <p class="story-summary">${item.summary}</p>
+        <div class="story-foot">
+          <span class="story-source">${item.source}</span>
+          <a class="story-link" href="${item.url}" target="_blank" rel="noopener noreferrer">阅读全文 ↗</a>
+        </div>
+      </article>
+    `;
+  } else if (index === 3) {
+    // 第四条:全宽横向,标题左摘要右
+    return `
+      <article class="${layoutClass}" data-type="${item.type}">
+        <div class="story-split">
+          <div class="story-split-left">
+            <div class="story-meta-line">
+              <span class="story-time">${item.time}</span>
+              ${tagHtml}
+            </div>
+            <h2 class="story-title-md">${item.title}</h2>
+          </div>
+          <div class="story-split-right">
+            <p class="story-summary">${item.summary}</p>
+            <div class="story-foot">
+              <span class="story-source">${item.source}</span>
+              <a class="story-link" href="${item.url}" target="_blank" rel="noopener noreferrer">阅读全文 ↗</a>
+            </div>
+          </div>
+        </div>
+      </article>
+    `;
+  } else {
+    // 第五条+:居中引言风格
+    return `
+      <article class="${layoutClass}" data-type="${item.type}">
+        <div class="story-meta-line">
+          <span class="story-time">${item.time}</span>
+          ${tagHtml}
+        </div>
+        <h2 class="story-title-sm">${item.title}</h2>
+        <p class="story-summary">${item.summary}</p>
+        <div class="story-foot">
+          <span class="story-source">${item.source}</span>
+          <a class="story-link" href="${item.url}" target="_blank" rel="noopener noreferrer">阅读全文 ↗</a>
+        </div>
+      </article>
+    `;
+  }
 }
 
 // 渲染新闻列表
 function renderNews(filter = "all") {
   const list = filter === "all" ? newsData : newsData.filter(item => item.type === filter);
-  masonryEl.innerHTML = list.map(newsTemplate).join("");
+  masonryEl.innerHTML = list.map((item, i) => newsTemplate(item, i)).join("");
   emptyEl.style.display = list.length ? "none" : "block";
 }
 
