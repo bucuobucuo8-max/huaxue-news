@@ -10,6 +10,7 @@ const heroStatsEl = document.getElementById("heroStats");
 let newsData = NEWS;
 let categoryLabels = CATEGORY_LABEL;
 let dataSource = "inline";
+let bannerImageUrl = "";
 
 // API 端点
 const API_EXTERNAL = "/api/external";
@@ -26,7 +27,8 @@ async function loadNewsData() {
         newsData = json.data.news;
         categoryLabels = json.data.categories || CATEGORY_LABEL;
         dataSource = json.source || "live-rss";
-        console.log(`[数据源] 真实RSS API: ${newsData.length} 条新闻`);
+        bannerImageUrl = json.bannerImage || "";
+        console.log(`[数据源] 真实RSS API: ${newsData.length} 条新闻, bannerImage: ${bannerImageUrl ? "yes" : "no"}`);
         return;
       }
     }
@@ -154,4 +156,13 @@ document.querySelectorAll(".filter-btn").forEach(btn => {
   await loadNewsData();
   renderStats();
   renderNews("all");
+  // 如果API返回了banner图片,替换SVG
+  if (bannerImageUrl) {
+    const banner = document.querySelector(".hero-banner");
+    if (banner) {
+      const svgEl = banner.querySelector("svg");
+      const svgBackup = svgEl ? svgEl.outerHTML : "";
+      banner.innerHTML = `<img src="${bannerImageUrl}" alt="精选新闻图片" loading="lazy" onerror="this.parentElement.innerHTML='${svgBackup.replace(/'/g, "&#39;")}'" />`;
+    }
+  }
 })();

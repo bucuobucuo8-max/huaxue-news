@@ -207,11 +207,28 @@ export async function onRequestGet(context) {
     // 按时间降序排序
     allNews.sort((a, b) => b.time.localeCompare(a.time));
 
+    // 抓取第一条新闻的 og:image 作为 banner 图片
+    let bannerImage = '';
+    if (allNews.length > 0 && allNews[0].url) {
+      try {
+        const artResp = await fetch(allNews[0].url, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
+          cf: { cacheTtl: 3600 },
+        });
+        if (artResp.ok) {
+          const html = await artResp.text();
+          const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+          if (ogMatch) bannerImage = ogMatch[1];
+        }
+      } catch (e) { /* 忽略图片抓取失败 */ }
+    }
+
     return new Response(JSON.stringify({
       code: 200,
       message: allNews.length > 0 ? 'success' : 'no live data available, fallback to local',
       source: 'live-rss',
       count: allNews.length,
+      bannerImage,
       fetchedAt: new Date().toISOString(),
       data: {
         categories: { award: '奖项', product: '产品', company: '公司', research: '研究' },
