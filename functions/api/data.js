@@ -17,8 +17,10 @@ export async function onRequestGet(context) {
   }
 
   try {
+    const origin = new URL(context.request.url).origin;
+
     // 尝试获取实时RSS数据
-    const externalResp = await fetch(new Request('/api/external', context.request), context);
+    const externalResp = await fetch(origin + '/api/external');
     if (externalResp.ok) {
       const data = await externalResp.json();
       if (data.code === 200 && data.data && data.data.news && data.data.news.length > 0) {
@@ -31,7 +33,8 @@ export async function onRequestGet(context) {
 
   // 回退:尝试本地JSON
   try {
-    const localResp = await fetch(new Request('/api/news.json', context.request), context);
+    const origin = new URL(context.request.url).origin;
+    const localResp = await fetch(origin + '/api/news.json');
     if (localResp.ok) {
       const data = await localResp.json();
       return new Response(JSON.stringify(data), { headers: CORS_HEADERS });

@@ -23,6 +23,10 @@ export async function onRequestGet(context) {
   }
 
   try {
+    // 构造内部API完整URL
+    const baseUrl = new URL(context.request.url);
+    const origin = baseUrl.origin;
+
     // 先尝试获取实时数据
     let newsData = [];
     let categories = { award: '奖项', product: '产品', company: '公司', research: '研究' };
@@ -30,7 +34,7 @@ export async function onRequestGet(context) {
     let bannerImage = '';
 
     try {
-      const extResp = await fetch(new Request('/api/external', context.request), context);
+      const extResp = await fetch(origin + '/api/external');
       if (extResp.ok) {
         const extJson = await extResp.json();
         if (extJson.code === 200 && extJson.data && extJson.data.news && extJson.data.news.length > 0) {
@@ -46,7 +50,7 @@ export async function onRequestGet(context) {
     // 实时数据为空时回退本地
     if (newsData.length === 0) {
       try {
-        const localResp = await fetch(new Request('/api/news.json', context.request), context);
+        const localResp = await fetch(origin + '/api/news.json');
         if (localResp.ok) {
           const localJson = await localResp.json();
           if (localJson.code === 200 && localJson.data && localJson.data.news) {
