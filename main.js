@@ -302,7 +302,15 @@ function renderNews(filter = "all") {
     const favs = getLocalFavorites();
     list = favs.map(f => ({ ...f, time: "★", important: false }));
   } else {
-    list = filter === "all" ? newsData : newsData.filter(item => item.type === filter);
+    list = filter === "all" ? [...newsData] : newsData.filter(item => item.type === filter);
+    // 把localStorage中收藏但不在当前新闻列表里的文章追加到列表末尾
+    const existingTitles = new Set(list.map(n => n.title));
+    const favs = getLocalFavorites();
+    favs.forEach(f => {
+      if (!existingTitles.has(f.title)) {
+        list.push({ ...f, time: "★", important: false });
+      }
+    });
   }
   // 存储到索引映射,供收藏按钮使用
   newsIndexMap = {};
