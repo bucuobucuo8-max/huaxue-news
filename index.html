@@ -27,10 +27,24 @@
       <button class="filter-btn" data-filter="product">产品</button>
       <button class="filter-btn" data-filter="company">公司</button>
       <button class="filter-btn" data-filter="research">研究</button>
+      <button class="filter-btn" data-filter="favorites" id="favBtn">★ 收藏夹</button>
     </nav>
   </header>
+
+  <!-- 排行榜区域 -->
+  <section class="ranking-section" id="rankingSection" aria-label="收藏排行榜">
+    <div class="ranking-header">
+      <h3>🔥 收藏排行榜</h3>
+      <span class="ranking-hint">← 滑动查看 Top 10 →</span>
+    </div>
+    <div class="ranking-carousel" id="rankingCarousel">
+      <div class="ranking-loading">加载中...</div>
+    </div>
+  </section>
+
   <section class="news-grid" id="masonry" aria-label="化学新闻"></section>
   <div class="empty" id="emptyState">当前分类暂无新闻。</div>
+  <div class="empty" id="favEmptyState" style="display:none;">收藏夹为空,点击新闻卡片右上角的 ♡ 收藏你喜欢的新闻。</div>
 </main>
 
 <script src="data.js"></script>

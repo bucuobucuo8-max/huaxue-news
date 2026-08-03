@@ -1,0 +1,8 @@
+name = "huaxue-news"
+compatibility_date = "2024-01-01"
+pages_build_output_dir = "."
+
+[[d1_databases]]
+binding = "DB"
+database_name = "huaxue-news-db"
+database_id = "faf2c5bb-990d-41fd-b611-e0640b67c0eb"
