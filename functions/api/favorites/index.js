@@ -7,7 +7,7 @@
 const CORS_HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+  'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
@@ -85,6 +85,43 @@ export async function onRequestPost(context) {
     return new Response(JSON.stringify({
       code: 200,
       message: 'favorited',
+    }), { headers: CORS_HEADERS });
+
+  } catch (e) {
+    return new Response(JSON.stringify({
+      code: 500,
+      message: e.message,
+    }), { status: 500, headers: CORS_HEADERS });
+  }
+}
+
+// 取消收藏,同时更新统计表
+export async function onRequestDelete(context) {
+  try {
+    const { request, env } = context;
+    const body = await request.json();
+    const { visitor_id, news_title } = body;
+
+    if (!visitor_id || !news_title) {
+      return new Response(JSON.stringify({
+        code: 400,
+        message: '缺少 visitor_id 或 news_title',
+      }), { status: 400, headers: CORS_HEADERS });
+    }
+
+    // 删除 favorites 表中的记录
+    await env.DB.prepare(
+      'DELETE FROM favorites WHERE visitor_id = ? AND news_title = ?'
+    ).bind(visitor_id, news_title).run();
+
+    // news_stats 表 favorite_count - 1(不低于0)
+    await env.DB.prepare(
+      `UPDATE news_stats SET favorite_count = MAX(favorite_count - 1, 0), updated_at = datetime('now') WHERE news_title = ?`
+    ).bind(news_title).run();
+
+    return new Response(JSON.stringify({
+      code: 200,
+      message: 'unfavorited',
     }), { headers: CORS_HEADERS });
 
   } catch (e) {

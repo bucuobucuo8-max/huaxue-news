@@ -40,8 +40,17 @@ function toggleFavorite(item) {
   const favs = getLocalFavorites();
   const idx = favs.findIndex(f => f.title === item.title);
   if (idx >= 0) {
+    // 取消收藏:本地移除 + 后台同步D1
     favs.splice(idx, 1);
     saveLocalFavorites(favs);
+    fetch("/api/favorites", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        visitor_id: VISITOR_ID,
+        news_title: item.title,
+      }),
+    }).then(() => loadRanking()).catch(() => {});
   } else {
     favs.push({ title: item.title, url: item.url, source: item.source, type: item.type, summary: item.summary });
     saveLocalFavorites(favs);
