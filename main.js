@@ -91,7 +91,9 @@ async function trackVisitor() {
   } catch (e) { console.log("追踪失败", e); }
 }
 
-// ===== 排行榜 =====
+// ===== 排行榜(垂直滚动,每次显示3条) =====
+let rankingTimer = null;
+let rankingPos = 0;
 async function loadRanking() {
   try {
     const resp = await fetch("/api/ranking");
@@ -102,11 +104,12 @@ async function loadRanking() {
       rankingCarouselEl.innerHTML = '<div class="ranking-loading">暂无收藏数据,收藏新闻后这里会显示排行榜</div>';
       return;
     }
+    // 渲染所有条目
     rankingCarouselEl.innerHTML = items.map((item, i) => {
       const rank = item.rank || i + 1;
       const isTop3 = rank <= 3;
       const titleClass = isTop3 ? `ranking-title top${rank}` : "ranking-title";
-      const flameHtml = isTop3 ? '<span class="flame"></span>' : '';
+      const flameHtml = isTop3 ? '<span class="flame-icon"></span>' : '';
       const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}`;
       return `
         <div class="ranking-card ${isTop3 ? 'top3' : ''}">
@@ -122,6 +125,18 @@ async function loadRanking() {
         </div>
       `;
     }).join("");
+
+    // 启动自动滚动
+    if (rankingTimer) clearInterval(rankingTimer);
+    rankingPos = 0;
+    rankingCarouselEl.style.transform = 'translateY(0)';
+    if (items.length > 3) {
+      rankingTimer = setInterval(() => {
+        rankingPos++;
+        if (rankingPos > items.length - 3) rankingPos = 0;
+        rankingCarouselEl.style.transform = `translateY(-${rankingPos * 88}px)`;
+      }, 3000);
+    }
   } catch (e) {
     rankingCarouselEl.innerHTML = '<div class="ranking-loading">排行榜加载失败</div>';
   }
