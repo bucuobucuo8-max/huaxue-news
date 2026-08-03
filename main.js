@@ -74,8 +74,13 @@ function toggleFavorite(item) {
 }
 function updateFavoriteButtons() {
   document.querySelectorAll(".fav-btn").forEach(btn => {
-    const title = btn.dataset.title;
-    btn.classList.toggle("favorited", isFavorited(title));
+    const index = parseInt(btn.dataset.index);
+    const item = newsIndexMap[index];
+    if (item) {
+      const fav = isFavorited(item.title);
+      btn.classList.toggle("favorited", fav);
+      btn.textContent = fav ? '♥' : '♡';
+    }
   });
 }
 
