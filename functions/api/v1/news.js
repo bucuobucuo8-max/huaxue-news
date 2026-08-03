@@ -30,7 +30,7 @@ export async function onRequestGet(context) {
     // 先尝试获取实时数据
     let newsData = [];
     let categories = { award: '奖项', product: '产品', company: '公司', research: '研究' };
-    let source = 'live-rss';
+    let source = 'live-json-api';
     let bannerImage = '';
 
     try {

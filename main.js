@@ -238,11 +238,10 @@ document.querySelectorAll(".filter-btn").forEach(btn => {
   await loadNewsData();
   renderStats();
   renderNews("all");
-  // 使用本地图片作为banner
-  if (bannerImageUrl) {
-    const banner = document.querySelector(".hero-banner");
-    if (banner) {
-      banner.innerHTML = `<img src="609c4f61-830b-4ebc-aee4-94e4f0bbcfe1.png" alt="精选化学图片" loading="lazy" />`;
-    }
+  // 使用API返回的图片作为banner,无则回退到本地图片
+  const banner = document.querySelector(".hero-banner");
+  if (banner) {
+    const imgSrc = bannerImageUrl || "微信图片_20260802194049_1611_29.png";
+    banner.innerHTML = `<img src="${imgSrc}" alt="精选化学图片" loading="lazy" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none';document.querySelector('.banner-svg').style.display='block';" />`;
   }
 })();

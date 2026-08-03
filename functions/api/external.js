@@ -347,6 +347,19 @@ export async function onRequestGet(context) {
     const withImage = allNews.find(n => n.image);
     if (withImage) {
       bannerImage = withImage.image;
+    } else if (allNews.length > 0 && allNews[0].url) {
+      // 从第一条新闻页面抓取 og:image
+      try {
+        const artResp = await fetch(allNews[0].url, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
+          cf: { cacheTtl: 3600 },
+        });
+        if (artResp.ok) {
+          const html = await artResp.text();
+          const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+          if (ogMatch) bannerImage = ogMatch[1];
+        }
+      } catch (e) { /* 忽略 */ }
     }
 
     return new Response(JSON.stringify({
