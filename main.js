@@ -203,10 +203,11 @@ const BENZENE_SVG = `
   </svg>
 `;
 
-// 收藏按钮
-function favBtnHtml(item) {
+// 收藏按钮 - 使用data-index避免特殊字符问题
+let newsIndexMap = {};
+function favBtnHtml(item, index) {
   const fav = isFavorited(item.title);
-  return `<button class="fav-btn ${fav ? 'favorited' : ''}" data-title="${item.title.replace(/"/g, '&quot;')}" onclick="event.stopPropagation();toggleFavorite({title:'${item.title.replace(/'/g, "\\'")}',url:'${item.url || ''}',source:'${(item.source || '').replace(/'/g, "\\'")}',type:'${item.type}',summary:'${(item.summary || '').replace(/'/g, "\\'").substring(0, 100)}'});return false;">${fav ? '♥' : '♡'}</button>`;
+  return `<button class="fav-btn ${fav ? 'favorited' : ''}" data-index="${index}">${fav ? '♥' : '♡'}</button>`;
 }
 
 function newsTemplate(item, index) {
@@ -214,7 +215,7 @@ function newsTemplate(item, index) {
   const tagHtml = `<span class="story-tag ${item.type}">${categoryLabels[item.type] || item.type}</span>`;
   const importantHtml = item.important ? `<span class="story-important">重要</span>` : "";
   const decoHtml = item.important ? BENZENE_SVG : "";
-  const favHtml = favBtnHtml(item);
+  const favHtml = favBtnHtml(item, index);
 
   if (index === 0) {
     return `
@@ -273,10 +274,26 @@ function renderNews(filter = "all") {
   } else {
     list = filter === "all" ? newsData : newsData.filter(item => item.type === filter);
   }
+  // 存储到索引映射,供收藏按钮使用
+  newsIndexMap = {};
+  list.forEach((item, i) => { newsIndexMap[i] = item; });
   masonryEl.innerHTML = list.map((item, i) => newsTemplate(item, i)).join("");
   emptyEl.style.display = (filter !== "favorites" && list.length === 0) ? "block" : "none";
   favEmptyEl.style.display = (filter === "favorites" && list.length === 0) ? "block" : "none";
 }
+
+// 事件委托:收藏按钮点击
+masonryEl.addEventListener("click", (e) => {
+  const btn = e.target.closest(".fav-btn");
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const index = parseInt(btn.dataset.index);
+  const item = newsIndexMap[index];
+  if (item) {
+    toggleFavorite(item);
+  }
+});
 
 // 筛选按钮
 document.querySelectorAll(".filter-btn").forEach(btn => {
