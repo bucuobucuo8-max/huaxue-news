@@ -36,36 +36,30 @@ function saveLocalFavorites(favs) {
 function isFavorited(title) {
   return getLocalFavorites().some(f => f.title === title);
 }
-async function toggleFavorite(item) {
+function toggleFavorite(item) {
   const favs = getLocalFavorites();
   const idx = favs.findIndex(f => f.title === item.title);
   if (idx >= 0) {
-    // 取消收藏(仅从本地移除)
     favs.splice(idx, 1);
     saveLocalFavorites(favs);
   } else {
-    // 添加收藏
     favs.push({ title: item.title, url: item.url, source: item.source, type: item.type, summary: item.summary });
     saveLocalFavorites(favs);
-    // 同步到D1数据库
-    try {
-      await fetch("/api/favorites", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          visitor_id: VISITOR_ID,
-          news_title: item.title,
-          news_url: item.url,
-          news_source: item.source,
-          news_type: item.type,
-          news_summary: item.summary,
-        }),
-      });
-    } catch (e) { console.log("收藏同步失败", e); }
-    // 刷新排行榜
-    loadRanking();
+    // 后台同步到D1,不阻塞UI
+    fetch("/api/favorites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        visitor_id: VISITOR_ID,
+        news_title: item.title,
+        news_url: item.url,
+        news_source: item.source,
+        news_type: item.type,
+        news_summary: item.summary,
+      }),
+    }).then(() => loadRanking()).catch(() => {});
   }
-  // 更新UI
+  // 立即更新UI
   updateFavoriteButtons();
   if (currentFilter === "favorites") renderNews("favorites");
 }
