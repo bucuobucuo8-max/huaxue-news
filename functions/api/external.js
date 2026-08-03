@@ -3,13 +3,30 @@
    从多个化学新闻 RSS 源获取实时数据
    ========================= */
 
-// RSS 源配置 - 多源确保分类多样化
+// RSS 源配置 - 20个免费源,无需注册,确保分类多样化
 const RSS_SOURCES = [
+  // 新闻资讯类
+  { url: 'https://www.chemistryworld.com/409.rss', type: 'research', source: 'Chemistry World' },
+  { url: 'https://www.chemistryworld.com/410.rss', type: 'research', source: 'Chemistry World Research' },
+  { url: 'https://www.chemistryworld.com/411.rss', type: 'company', source: 'Chemistry World Business' },
+  { url: 'https://cen.acs.org/feeds/rss/latestnews.xml', type: 'research', source: 'C&EN' },
+  { url: 'https://cen.acs.org/feeds/rss/topic/materials.xml', type: 'product', source: 'C&EN Materials' },
+  { url: 'https://cen.acs.org/feeds/rss/topic/synthesis.xml', type: 'product', source: 'C&EN Synthesis' },
+  { url: 'https://cen.acs.org/feeds/rss/topic/pharmaceuticals.xml', type: 'product', source: 'C&EN Pharma' },
+  { url: 'https://cen.acs.org/feeds/rss/topic/energy.xml', type: 'product', source: 'C&EN Energy' },
+  { url: 'https://cen.acs.org/feeds/rss/topic/environment.xml', type: 'research', source: 'C&EN Environment' },
+  { url: 'https://phys.org/rss-feed/chemistry-news/', type: 'research', source: 'Phys.org' },
+  { url: 'https://www.sciencedaily.com/rss/matter_energy/chemistry.xml', type: 'research', source: 'ScienceDaily' },
+  { url: 'https://scitechdaily.com/news/chemistry/feed/', type: 'research', source: 'SciTechDaily' },
+  // 期刊论文类
   { url: 'https://www.nature.com/nchem.rss', type: 'research', source: 'Nature Chemistry' },
-  { url: 'https://www.chemistryworld.com/rss/chemistryworld.rss', type: 'research', source: 'Chemistry World' },
-  { url: 'https://www.acs.org/content/acs/en/pressroom.rss', type: 'company', source: 'ACS' },
-  { url: 'https://cen.acs.org/rss', type: 'product', source: 'C&EN' },
-  { url: 'https://www.rsc.org/rss/news/', type: 'award', source: 'RSC' },
+  { url: 'https://www.nature.com/subjects/chemistry.rss', type: 'research', source: 'Nature Chemistry Subject' },
+  { url: 'https://pubs.acs.org/action/showFeed?type=axatoc&feed=rss&jc=jacsat', type: 'research', source: 'JACS' },
+  { url: 'https://pubs.acs.org/action/showFeed?type=axatoc&feed=rss&jc=ancac3', type: 'product', source: 'ACS Nano' },
+  { url: 'https://pubs.acs.org/action/showFeed?type=axatoc&feed=rss&jc=accacs', type: 'research', source: 'ACS Catalysis' },
+  { url: 'http://feeds.rsc.org/rss/sc', type: 'research', source: 'RSC Chemical Science' },
+  { url: 'http://feeds.rsc.org/rss/gc', type: 'research', source: 'RSC Green Chemistry' },
+  { url: 'https://www.rsc.org/rss/news/', type: 'award', source: 'RSC News' },
 ];
 
 // 从 RSS item 中提取字段(支持 CDATA)
@@ -119,7 +136,7 @@ function parseRSS(xml, defaultType, sourceName, startIndex) {
   const itemRegex = /<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi;
   let match;
   let count = 0;
-  while ((match = itemRegex.exec(xml)) !== null && count < 5) {
+  while ((match = itemRegex.exec(xml)) !== null && count < 2) {
     const item = match[1];
     const title = cleanHtml(extractField(item, 'title'));
     if (!title || title.length < 5) continue;
@@ -204,8 +221,9 @@ export async function onRequestGet(context) {
       allNews = balanceCategories(allNews);
     }
 
-    // 按时间降序排序
+    // 按时间降序排序,截取前20条
     allNews.sort((a, b) => b.time.localeCompare(a.time));
+    allNews = allNews.slice(0, 20);
 
     // 抓取第一条新闻的 og:image 作为 banner 图片
     let bannerImage = '';
