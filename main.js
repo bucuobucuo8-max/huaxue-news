@@ -104,8 +104,8 @@ async function loadRanking() {
       rankingCarouselEl.innerHTML = '<div class="ranking-loading">暂无收藏数据,收藏新闻后这里会显示排行榜</div>';
       return;
     }
-    // 渲染所有条目
-    rankingCarouselEl.innerHTML = items.map((item, i) => {
+    // 渲染所有条目到内层滚动容器
+    const cardsHtml = items.map((item, i) => {
       const rank = item.rank || i + 1;
       const isTop3 = rank <= 3;
       const titleClass = isTop3 ? `ranking-title top${rank}` : "ranking-title";
@@ -125,16 +125,18 @@ async function loadRanking() {
         </div>
       `;
     }).join("");
+    rankingCarouselEl.innerHTML = `<div class="ranking-inner" id="rankingInner">${cardsHtml}</div>`;
 
-    // 启动自动滚动
+    // 启动自动滚动(移动内层,外层overflow:hidden裁剪)
+    const innerEl = document.getElementById("rankingInner");
     if (rankingTimer) clearInterval(rankingTimer);
     rankingPos = 0;
-    rankingCarouselEl.style.transform = 'translateY(0)';
-    if (items.length > 3) {
+    if (innerEl) innerEl.style.transform = 'translateY(0)';
+    if (items.length > 3 && innerEl) {
       rankingTimer = setInterval(() => {
         rankingPos++;
         if (rankingPos > items.length - 3) rankingPos = 0;
-        rankingCarouselEl.style.transform = `translateY(-${rankingPos * 88}px)`;
+        innerEl.style.transform = `translateY(-${rankingPos * 88}px)`;
       }, 3000);
     }
   } catch (e) {

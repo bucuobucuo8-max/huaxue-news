@@ -566,8 +566,10 @@ body::before {
 .ranking-carousel {
   height: 264px;
   overflow: hidden;
-  transition: transform 0.6s cubic-bezier(0.25, 0.1, 0.25, 1);
   position: relative;
+}
+.ranking-inner {
+  transition: transform 0.6s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 .ranking-loading {
