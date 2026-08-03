@@ -2,9 +2,9 @@
    Cloudflare Pages Function: 真实化学新闻 API
    使用免费JSON API(无需注册/无需API Key)
    1. GDELT Project  - 全球化学新闻
-   2. Crossref       - 化学学术论文
-   3. OpenAlex       - 化学研究(概念过滤)
-   4. PubMed         - 生物医学化学文献
+   2. Crossref       - 化学学术论文(按期刊ISSN精确过滤)
+   3. OpenAlex       - 化学研究(概念ID精确过滤)
+   4. PubMed         - 生物医学化学文献(MeSH词过滤)
    ========================= */
 
 const CORS_HEADERS = {
@@ -19,6 +19,38 @@ function cleanHtml(text) {
   if (!text) return '';
   return text.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+}
+
+// 化学相关性检测:标题+摘要+期刊名必须包含化学关键词
+function isChemistryRelated(title, summary, journal) {
+  const text = (title + ' ' + summary + ' ' + journal).toLowerCase();
+  // 非化学主题黑名单
+  if (/nursing|music therapy|maternal body mass|attachment style|spiritual intell|drought stress|soil salinity|effluent|contour based|real time multiple object|client-centered|relaxing music|life distress/.test(text)) return false;
+  // 化学关键词白名单
+  const chemKeywords = [
+    'chemistr', 'chemical', 'molecule', 'molecular', 'catalys', 'synthesi',
+    'polymer', 'compound', 'element', 'bond', 'ion', 'acid', 'base',
+    'organic', 'inorganic', 'biochem', 'electrochem', 'spectroscop',
+    'crystal', 'nano', 'material', 'reaction', 'oxid', 'reduc',
+    'hydrogen', 'carbon', 'nitrogen', 'oxygen', 'metal', 'ligand',
+    'enzyme', 'protein', 'dna', 'rna', 'pharma', 'drug',
+    'photochem', 'thermochem', 'quantum chem', 'computational chem',
+    'analytical chem', 'organic chem', 'physic chem',
+    'doi.org', 'acs', 'rsc', 'nature chem', 'wiley', 'angewandte',
+    'jacs', 'catalysis', 'surfactant', 'monomer', 'copolymer',
+    'nanoparticle', 'nanocrystal', 'nanowire', 'nanosheet',
+    'electrode', 'battery', 'fuel cell', 'solar cell', 'photovoltaic',
+    'semiconductor', 'superconductor', 'magnet', 'ceramic',
+    'composit', 'alloy', 'corrosion', 'coating', 'thin film',
+    'chromatography', 'mass spectrom', 'nmr', 'x-ray', 'diffract',
+    'crystalliz', 'solubility', 'viscosity', 'density', 'surface tension',
+    'micelle', 'emulsion', 'colloid', 'gel', 'aerogel',
+    'porous', 'mesoporous', 'zeolite', 'mof', 'cof',
+    'perovskite', 'graphene', 'carbon nanotube', 'fullerene',
+    'electrolysis', 'electrochem', 'photoelectrochem',
+    'chemisorpt', 'physisorp', 'adsorption', 'desorption',
+  ];
+  return chemKeywords.some(kw => text.includes(kw));
 }
 
 function classifyNews(title, desc) {
@@ -52,11 +84,18 @@ function formatTime(dateStr, fallbackIndex) {
   return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 }
 
-// 过滤无效文章
+// 验证URL是否有效
+function isValidUrl(url) {
+  if (!url || url.length < 15) return false;
+  if (!url.startsWith('http://') && !url.startsWith('https://')) return false;
+  return true;
+}
+
+// 验证文章是否有效
 function isValidArticle(title, url) {
   if (!title || title.length < 10) return false;
   if (/title pending|untitled|no title/i.test(title)) return false;
-  if (!url || url.length < 10) return false;
+  if (!isValidUrl(url)) return false;
   return true;
 }
 
@@ -101,6 +140,7 @@ async function fetchGDELT() {
           const title = cleanHtml(art.title);
           const url = art.url || '';
           if (!isValidArticle(title, url)) return;
+          if (!isChemistryRelated(title, art.domain || '', '')) return;
           results.push({
             time: formatTime(art.seendate ? `${art.seendate.substring(0,4)}-${art.seendate.substring(4,6)}-${art.seendate.substring(6,8)}T${art.seendate.substring(8,10)}:${art.seendate.substring(10,12)}:${art.seendate.substring(12,14)}Z` : null, i),
             type: classifyNews(title, art.domain || ''),
@@ -119,31 +159,95 @@ async function fetchGDELT() {
 }
 
 // =========================
-// 2. Crossref API - 化学学术论文(按期刊过滤)
+// 2. Crossref API - 按化学期刊ISSN精确获取
 // =========================
 async function fetchCrossref() {
+  // 知名化学期刊ISSN列表
+  const chemistryISSNs = [
+    '1755-4330', // Nature Chemistry
+    '0002-7863', // JACS
+    '0009-2665', // Chemical Reviews
+    '1433-7851', // Angewandte Chemie
+    '2041-6520', // Chemical Science
+    '1936-0851', // ACS Nano
+    '2155-5435', // ACS Catalysis
+    '0897-4756', // Chemistry of Materials
+    '0020-1669', // Inorganic Chemistry
+    '1523-7060', // Organic Letters
+    '0003-2700', // Analytical Chemistry
+  ];
+  const results = [];
+  // 随机选3个期刊查询,避免请求过多
+  const selectedISSNs = chemistryISSNs.sort(() => Math.random() - 0.5).slice(0, 4);
+  for (const issn of selectedISSNs) {
+    try {
+      const url = `https://api.crossref.org/journals/${issn}/works?filter=type:journal-article&rows=3&sort=published&order=desc&mailto=info@huaxue-news.pages.dev`;
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
+        cf: { cacheTtl: 300 },
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const items = data.message?.items || [];
+      for (const item of items) {
+        const title = cleanHtml(item.title?.[0] || '');
+        const doi = item.DOI || '';
+        const url = doi ? `https://doi.org/${doi}` : '';
+        if (!isValidArticle(title, url)) continue;
+        const abstract = cleanHtml(item.abstract || '').substring(0, 200);
+        const journal = item['container-title']?.[0] || 'Chemistry Journal';
+        if (!isChemistryRelated(title, abstract, journal)) continue;
+        const dateParts = item.published?.['date-parts']?.[0];
+        const dateStr = dateParts ? `${dateParts[0]}-${String(dateParts[1]||1).padStart(2,'0')}-${String(dateParts[2]||1).padStart(2,'0')}` : null;
+        results.push({
+          time: formatTime(dateStr, results.length + 10),
+          type: classifyNews(title, abstract),
+          title,
+          summary: abstract || journal,
+          source: journal,
+          url,
+          important: isImportant(title, abstract),
+        });
+        if (results.length >= 8) break;
+      }
+      if (results.length >= 8) break;
+    } catch (e) { /* 忽略 */ }
+  }
+  return results;
+}
+
+// =========================
+// 3. OpenAlex API - 化学概念精确过滤
+// =========================
+async function fetchOpenAlex() {
   try {
-    // 用化学相关关键词 + 期刊类型过滤
-    const url = 'https://api.crossref.org/works?query=chemistry+OR+catalysis+OR+polymer+OR+materials+science&filter=type:journal-article&rows=15&sort=published&order=desc&mailto=info@huaxue-news.pages.dev';
+    // C178790648 = Chemistry, C185592680 = Materials science
+    const url = 'https://api.openalex.org/works?filter=concepts.id:C178790648|C185592680,publication_year:2025-2026,type:article&sort=publication_date:desc&per_page=10&mailto=info@huaxue-news.pages.dev';
     const resp = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
       cf: { cacheTtl: 300 },
     });
     if (!resp.ok) return [];
     const data = await resp.json();
-    const items = data.message?.items || [];
     const results = [];
-    for (const item of items) {
-      const title = cleanHtml(item.title?.[0] || '');
-      const doi = item.DOI || '';
-      const url = doi ? `https://doi.org/${doi}` : (item.URL || '');
+    for (const item of (data.results || [])) {
+      const title = cleanHtml(item.title || '');
+      const doi = item.doi || '';
+      const url = doi ? doi : '';
       if (!isValidArticle(title, url)) continue;
-      const abstract = cleanHtml(item.abstract || '').substring(0, 200);
-      const journal = item['container-title']?.[0] || 'Academic Journal';
-      const dateParts = item.published?.['date-parts']?.[0];
-      const dateStr = dateParts ? `${dateParts[0]}-${String(dateParts[1]||1).padStart(2,'0')}-${String(dateParts[2]||1).padStart(2,'0')}` : null;
+      let abstract = '';
+      if (item.abstract_inverted_index) {
+        const words = [];
+        for (const [word, positions] of Object.entries(item.abstract_inverted_index)) {
+          positions.forEach(pos => { words[pos] = word; });
+        }
+        abstract = words.filter(w => w).join(' ').substring(0, 200);
+      }
+      const journal = item.host_venue?.display_name || item.primary_location?.source?.display_name || 'OpenAlex';
+      if (!isChemistryRelated(title, abstract, journal)) continue;
+      const dateStr = item.publication_date || '';
       results.push({
-        time: formatTime(dateStr, results.length + 10),
+        time: formatTime(dateStr, results.length + 20),
         type: classifyNews(title, abstract),
         title,
         summary: abstract || journal,
@@ -158,55 +262,12 @@ async function fetchCrossref() {
 }
 
 // =========================
-// 3. OpenAlex API - 化学研究(概念ID精确过滤)
-// =========================
-async function fetchOpenAlex() {
-  try {
-    // C178790648 = Chemistry 概念
-    const url = 'https://api.openalex.org/works?filter=concepts.id:C178790648,publication_year:2025-2026,type:article&sort=publication_date:desc&per_page=8&mailto=info@huaxue-news.pages.dev';
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
-      cf: { cacheTtl: 300 },
-    });
-    if (!resp.ok) return [];
-    const data = await resp.json();
-    const results = [];
-    for (const item of (data.results || [])) {
-      const title = cleanHtml(item.title || '');
-      const doi = item.doi || '';
-      const url = doi ? doi : (item.id || '');
-      if (!isValidArticle(title, url)) continue;
-      // OpenAlex的abstract_inverted_index需要重建
-      let abstract = '';
-      if (item.abstract_inverted_index) {
-        const words = [];
-        for (const [word, positions] of Object.entries(item.abstract_inverted_index)) {
-          positions.forEach(pos => { words[pos] = word; });
-        }
-        abstract = words.filter(w => w).join(' ').substring(0, 200);
-      }
-      const journal = item.host_venue?.display_name || item.primary_location?.source?.display_name || 'OpenAlex';
-      const dateStr = item.publication_date || '';
-      results.push({
-        time: formatTime(dateStr, results.length + 20),
-        type: classifyNews(title, abstract),
-        title,
-        summary: abstract || journal,
-        source: journal,
-        url,
-        important: isImportant(title, abstract),
-      });
-    }
-    return results;
-  } catch (e) { return []; }
-}
-
-// =========================
-// 4. PubMed API - 生物医学化学文献
+// 4. PubMed API - 化学相关文献(MeSH词精确过滤)
 // =========================
 async function fetchPubMed() {
   try {
-    const searchUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=chemistry+OR+chemical+synthesis&retmax=8&retmode=json&sort=pub_date';
+    // 用MeSH词精确搜索化学文献
+    const searchUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=%22Chemistry%22[MeSH]+OR+%22Chemical+Phenomena%22[MeSH]+OR+%22Chemical+Actions%22[MeSH]&retmax=8&retmode=json&sort=pub_date';
     const searchResp = await fetch(searchUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
       cf: { cacheTtl: 300 },
@@ -232,6 +293,7 @@ async function fetchPubMed() {
       const url = `https://pubmed.ncbi.nlm.nih.gov/${id}/`;
       if (!isValidArticle(title, url)) return;
       const journal = item.fulljournalname || 'PubMed';
+      if (!isChemistryRelated(title, journal, journal)) return;
       const pubDate = item.pubdate || '';
       news.push({
         time: formatTime(pubDate, i + 30),
@@ -281,7 +343,6 @@ export async function onRequestGet(context) {
     allNews.sort((a, b) => b.time.localeCompare(a.time));
     allNews = allNews.slice(0, 20);
 
-    // 获取banner图片
     let bannerImage = '';
     const withImage = allNews.find(n => n.image);
     if (withImage) {
