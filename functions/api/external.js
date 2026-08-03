@@ -1,185 +1,10 @@
 /* =========================
    Cloudflare Pages Function: 真实化学新闻 API
-   从多个化学新闻 RSS 源获取实时数据
+   使用免费JSON API(无需注册/无需API Key)
+   1. GDELT Project  - 全球化学新闻
+   2. Crossref       - 化学学术论文
+   3. PubMed         - 生物医学化学文献
    ========================= */
-
-// RSS 源配置 - 20个免费源,无需注册,确保分类多样化
-const RSS_SOURCES = [
-  // 新闻资讯类
-  { url: 'https://www.chemistryworld.com/409.rss', type: 'research', source: 'Chemistry World' },
-  { url: 'https://www.chemistryworld.com/410.rss', type: 'research', source: 'Chemistry World Research' },
-  { url: 'https://www.chemistryworld.com/411.rss', type: 'company', source: 'Chemistry World Business' },
-  { url: 'https://cen.acs.org/feeds/rss/latestnews.xml', type: 'research', source: 'C&EN' },
-  { url: 'https://cen.acs.org/feeds/rss/topic/materials.xml', type: 'product', source: 'C&EN Materials' },
-  { url: 'https://cen.acs.org/feeds/rss/topic/synthesis.xml', type: 'product', source: 'C&EN Synthesis' },
-  { url: 'https://cen.acs.org/feeds/rss/topic/pharmaceuticals.xml', type: 'product', source: 'C&EN Pharma' },
-  { url: 'https://cen.acs.org/feeds/rss/topic/energy.xml', type: 'product', source: 'C&EN Energy' },
-  { url: 'https://cen.acs.org/feeds/rss/topic/environment.xml', type: 'research', source: 'C&EN Environment' },
-  { url: 'https://phys.org/rss-feed/chemistry-news/', type: 'research', source: 'Phys.org' },
-  { url: 'https://www.sciencedaily.com/rss/matter_energy/chemistry.xml', type: 'research', source: 'ScienceDaily' },
-  { url: 'https://scitechdaily.com/news/chemistry/feed/', type: 'research', source: 'SciTechDaily' },
-  // 期刊论文类
-  { url: 'https://www.nature.com/nchem.rss', type: 'research', source: 'Nature Chemistry' },
-  { url: 'https://www.nature.com/subjects/chemistry.rss', type: 'research', source: 'Nature Chemistry Subject' },
-  { url: 'https://pubs.acs.org/action/showFeed?type=axatoc&feed=rss&jc=jacsat', type: 'research', source: 'JACS' },
-  { url: 'https://pubs.acs.org/action/showFeed?type=axatoc&feed=rss&jc=ancac3', type: 'product', source: 'ACS Nano' },
-  { url: 'https://pubs.acs.org/action/showFeed?type=axatoc&feed=rss&jc=accacs', type: 'research', source: 'ACS Catalysis' },
-  { url: 'http://feeds.rsc.org/rss/sc', type: 'research', source: 'RSC Chemical Science' },
-  { url: 'http://feeds.rsc.org/rss/gc', type: 'research', source: 'RSC Green Chemistry' },
-  { url: 'https://www.rsc.org/rss/news/', type: 'award', source: 'RSC News' },
-];
-
-// 从 RSS item 中提取字段(支持 CDATA)
-function extractField(item, tag) {
-  const cdata = item.match(new RegExp(`<${tag}>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tag}>`, 'i'));
-  if (cdata) return cdata[1].trim();
-  const plain = item.match(new RegExp(`<${tag}>\\s*([\\s\\S]*?)\\s*</${tag}>`, 'i'));
-  if (plain) return plain[1].trim();
-  return '';
-}
-
-// 支持 pubDate 和 dc:date 两种时间格式
-function parseTime(item, fallbackIndex) {
-  let dateStr = extractField(item, 'pubDate');
-  if (!dateStr) {
-    const dc = item.match(/<dc:date[^>]*>([\s\S]*?)<\/dc:date>/i);
-    if (dc) dateStr = dc[1].trim();
-  }
-  if (dateStr) {
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) {
-      const h = d.getUTCHours();
-      const m = d.getUTCMinutes();
-      // 如果解析出 00:00,可能是只有日期没有时间的 RSS,使用 fallback
-      if (h !== 0 || m !== 0) {
-        return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-      }
-    }
-  }
-  // fallback:基于当前 UTC 时间生成递减序列
-  const now = new Date();
-  let h = now.getUTCHours();
-  let m = now.getUTCMinutes() - fallbackIndex * 12;
-  while (m < 0) { m += 60; h = (h - 1 + 24) % 24; }
-  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-}
-
-// 清理 HTML 标签和实体
-function cleanHtml(text) {
-  return text
-    .replace(/<[^>]+>/g, '')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .trim();
-}
-
-// 根据标题+描述关键词智能分类
-function classifyNews(title, desc, defaultType) {
-  const text = (title + ' ' + desc).toLowerCase();
-  // 奖项类
-  if (/award|prize|medal|winner|honor|lecture|recogni|荣誉|奖|获奖/.test(text)) return 'award';
-  // 产品类
-  if (/launch|product|new material|new .+film|catalyst|release|unveil|introduc| coating|resin|polymer|biobased|bio-based|recycl|推出|发布|新品|材料/.test(text)) return 'product';
-  // 公司类
-  if (/company|expand|invest|build|partner|sign|agreement|announce|facility|plant|acquir|merger|funding|round|公司|扩建|投资|合作|签署|收购/.test(text)) return 'company';
-  // 研究类
-  if (/study|research|discover|method|analysis|mechanism|synthes|reaction|cataly|spectr|crystal|bond|electron|molecul|atom|ion|acid|protein|enzyme|DNA|RNA|cell| 研究|发现|方法|分析|机理/.test(text)) return 'research';
-  return defaultType;
-}
-
-// 提取文章链接(支持 RDF:about 属性 fallback)
-function extractLink(item) {
-  let link = extractField(item, 'link');
-  // 如果 link 为空或不是文章URL,尝试 rdf:about 属性
-  if (!link || link.includes('/rss/') || link.includes('feeds.nature.com') || link.includes('.png') || link.includes('.jpg') || !link.includes('/articles/')) {
-    const about = item.match(/rdf:about="([^"]+)"/i);
-    if (about && about[1] && about[1].includes('/articles/')) link = about[1];
-  }
-  return link || '';
-}
-
-// 提取描述(支持 content:encoded / dc:description)
-function extractDescription(item) {
-  let desc = extractField(item, 'description');
-  if (!desc) desc = extractField(item, 'content:encoded');
-  if (!desc) {
-    const dcDesc = item.match(/<dc:description[^>]*>([\s\S]*?)<\/dc:description>/i);
-    if (dcDesc) desc = dcDesc[1];
-  }
-  return desc || '';
-}
-
-// 清理摘要:移除HTML标签和Nature元数据前缀
-function cleanSummary(text) {
-  let cleaned = text.replace(/<[^>]+>/g, '').trim();
-  // 移除 "Nature Chemistry, Published online: ... doi:xxx" 前缀
-  cleaned = cleaned.replace(/^Nature\s+\w+,\s*Published online:[^]*?doi:[^\s]*\s*/i, '');
-  // 移除残留的doi链接
-  cleaned = cleaned.replace(/^doi:[^\s]*\s*/i, '');
-  return cleaned.substring(0, 200).trim();
-}
-
-// 判断重要性
-function isImportant(title, desc) {
-  const text = (title + ' ' + desc).toLowerCase();
-  return /breakthrough|milestone|nobel|first|critical|discovery|unprecedent|record|突破|首次|重大|里程碑/.test(text);
-}
-
-// 解析 RSS XML 为新闻数组(支持 RSS 2.0 和 RDF/RSS 1.0)
-function parseRSS(xml, defaultType, sourceName, startIndex) {
-  const items = [];
-  // 匹配 <item> 和 <item rdf:about="...">,不匹配 <items>
-  const itemRegex = /<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi;
-  let match;
-  let count = 0;
-  while ((match = itemRegex.exec(xml)) !== null && count < 2) {
-    const item = match[1];
-    const title = cleanHtml(extractField(item, 'title'));
-    if (!title || title.length < 5) continue;
-    const link = cleanHtml(extractLink(item));
-    const rawDesc = extractDescription(item);
-    const desc = cleanSummary(rawDesc);
-    const time = parseTime(item, startIndex + count);
-    const type = classifyNews(title, desc, defaultType);
-    const important = isImportant(title, desc);
-    items.push({
-      time,
-      type,
-      title,
-      summary: desc || title,
-      source: sourceName,
-      url: link,
-      important,
-    });
-    count++;
-  }
-  return items;
-}
-
-// 确保分类均衡:如果某分类缺失,从research中轮转分配
-function balanceCategories(news) {
-  const types = ['award', 'product', 'company', 'research'];
-  const typeCounts = {};
-  types.forEach(t => typeCounts[t] = 0);
-  news.forEach(n => { if (typeCounts[n.type] !== undefined) typeCounts[n.type]++; });
-
-  // 如果某分类为0,从research类中抽取补充
-  types.forEach(t => {
-    if (t !== 'research' && typeCounts[t] === 0) {
-      const researchItems = news.filter(n => n.type === 'research' && typeCounts['research'] > 1);
-      if (researchItems.length > 0) {
-        researchItems[0].type = t;
-        typeCounts['research']--;
-        typeCounts[t]++;
-      }
-    }
-  });
-  return news;
-}
 
 // CORS 头
 const CORS_HEADERS = {
@@ -190,31 +15,214 @@ const CORS_HEADERS = {
   'Cache-Control': 'public, max-age=300',
 };
 
+// 清理HTML标签
+function cleanHtml(text) {
+  if (!text) return '';
+  return text.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+}
+
+// 智能分类
+function classifyNews(title, desc) {
+  const text = (title + ' ' + desc).toLowerCase();
+  if (/award|prize|medal|winner|honor|lecture|recogni|荣誉|奖|获奖/.test(text)) return 'award';
+  if (/launch|product|new material|new .+film|catalyst|release|unveil|introduc|coating|resin|polymer|biobased|bio-based|recycl|nanocrystal|nanoparticle|推出|发布|新品|材料/.test(text)) return 'product';
+  if (/company|expand|invest|build|partner|sign|agreement|announce|facility|plant|acquir|merger|funding|inaugurat|nuclear|hydrogen plant|公司|扩建|投资|合作/.test(text)) return 'company';
+  if (/study|research|discover|method|analysis|mechanism|synthes|reaction|cataly|spectr|crystal|bond|electron|molecul|atom|ion|acid|protein|enzyme|DNA|RNA|cell|energetic|thermochem|quantum|photovoltaic|heterojunction|研究|发现|方法|分析|机理/.test(text)) return 'research';
+  return 'research';
+}
+
+// 判断重要性
+function isImportant(title, desc) {
+  const text = (title + ' ' + desc).toLowerCase();
+  return /breakthrough|milestone|nobel|first|critical|discovery|unprecedent|record|defy|crack|stumped|突破|首次|重大|里程碑/.test(text);
+}
+
+// 格式化时间为 HH:MM
+function formatTime(dateStr, fallbackIndex) {
+  if (dateStr) {
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) {
+      const h = d.getUTCHours();
+      const m = d.getUTCMinutes();
+      if (h !== 0 || m !== 0) {
+        return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+      }
+    }
+  }
+  const now = new Date();
+  let h = now.getUTCHours();
+  let m = now.getUTCMinutes() - fallbackIndex * 12;
+  while (m < 0) { m += 60; h = (h - 1 + 24) % 24; }
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+// 确保分类均衡
+function balanceCategories(news) {
+  const types = ['award', 'product', 'company', 'research'];
+  const counts = {};
+  types.forEach(t => counts[t] = 0);
+  news.forEach(n => { if (counts[n.type] !== undefined) counts[n.type]++; });
+  types.forEach(t => {
+    if (t !== 'research' && counts[t] === 0) {
+      const researchItems = news.filter(n => n.type === 'research' && counts['research'] > 1);
+      if (researchItems.length > 0) {
+        researchItems[0].type = t;
+        counts['research']--;
+        counts[t]++;
+      }
+    }
+  });
+  return news;
+}
+
+// =========================
+// 1. GDELT API - 全球化学新闻
+// =========================
+async function fetchGDELT() {
+  const queries = [
+    { q: '"chemical" OR "chemistry" OR "petrochemical"', type: 'research', source: 'GDELT' },
+    { q: '"chemical plant" OR "chemical industry" OR "chemical engineering"', type: 'company', source: 'GDELT Industry' },
+    { q: '"new material" OR "nanomaterial" OR "catalyst" OR "polymer"', type: 'product', source: 'GDELT Materials' },
+    { q: '"chemistry award" OR "chemistry prize" OR "nobel chemistry"', type: 'award', source: 'GDELT Awards' },
+  ];
+  const results = [];
+  for (const query of queries) {
+    try {
+      const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query.q)}&mode=artlist&maxrecords=5&format=json&sort=date&timespan=1week`;
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
+        cf: { cacheTtl: 300 },
+      });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      if (data.articles) {
+        data.articles.forEach((art, i) => {
+          const title = cleanHtml(art.title);
+          if (!title || title.length < 5) return;
+          results.push({
+            time: formatTime(art.seendate ? `${art.seendate.substring(0,4)}-${art.seendate.substring(4,6)}-${art.seendate.substring(6,8)}T${art.seendate.substring(8,10)}:${art.seendate.substring(10,12)}:${art.seendate.substring(12,14)}Z` : null, i),
+            type: classifyNews(title, art.domain || ''),
+            title,
+            summary: `${art.domain || 'Chemistry News'} - ${art.sourcecountry || 'Global'}`,
+            source: query.source,
+            url: art.url || '',
+            important: isImportant(title, art.domain || ''),
+            image: art.socialimage || '',
+          });
+        });
+      }
+    } catch (e) { /* 忽略 */ }
+  }
+  return results;
+}
+
+// =========================
+// 2. Crossref API - 化学学术论文
+// =========================
+async function fetchCrossref() {
+  try {
+    const url = 'https://api.crossref.org/works?query=chemistry+materials+catalysis+synthesis&rows=10&sort=published&order=desc&mailto=info@huaxue-news.pages.dev';
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
+      cf: { cacheTtl: 300 },
+    });
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    const items = data.message?.items || [];
+    return items.slice(0, 8).map((item, i) => {
+      const title = cleanHtml(item.title?.[0] || '');
+      if (!title) return null;
+      const abstract = cleanHtml(item.abstract || '').substring(0, 200);
+      const journal = item['container-title']?.[0] || 'Academic Journal';
+      const dateParts = item.published?.['date-parts']?.[0];
+      const dateStr = dateParts ? `${dateParts[0]}-${String(dateParts[1]||1).padStart(2,'0')}-${String(dateParts[2]||1).padStart(2,'0')}` : null;
+      return {
+        time: formatTime(dateStr, i + 10),
+        type: classifyNews(title, abstract),
+        title,
+        summary: abstract || journal,
+        source: journal,
+        url: item.DOI ? `https://doi.org/${item.DOI}` : (item.URL || ''),
+        important: isImportant(title, abstract),
+      };
+    }).filter(n => n !== null);
+  } catch (e) { return []; }
+}
+
+// =========================
+// 3. PubMed API - 生物医学化学文献
+// =========================
+async function fetchPubMed() {
+  try {
+    // Step 1: 搜索获取ID
+    const searchUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=chemistry+OR+chemical+synthesis&retmax=5&retmode=json&sort=pub_date';
+    const searchResp = await fetch(searchUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
+      cf: { cacheTtl: 300 },
+    });
+    if (!searchResp.ok) return [];
+    const searchData = await searchResp.json();
+    const ids = searchData.esearchresult?.idlist || [];
+    if (ids.length === 0) return [];
+
+    // Step 2: 获取摘要
+    const summaryUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${ids.join(',')}&retmode=json`;
+    const summaryResp = await fetch(summaryUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
+      cf: { cacheTtl: 300 },
+    });
+    if (!summaryResp.ok) return [];
+    const summaryData = await summaryResp.json();
+    const result = summaryData.result || {};
+    const news = [];
+    ids.forEach((id, i) => {
+      const item = result[id];
+      if (!item) return;
+      const title = cleanHtml(item.title || '');
+      if (!title) return;
+      const journal = item.fulljournalname || 'PubMed';
+      const pubDate = item.pubdate || '';
+      news.push({
+        time: formatTime(pubDate, i + 20),
+        type: classifyNews(title, journal),
+        title,
+        summary: journal,
+        source: 'PubMed',
+        url: `https://pubmed.ncbi.nlm.nih.gov/${id}/`,
+        important: isImportant(title, journal),
+      });
+    });
+    return news;
+  } catch (e) { return []; }
+}
+
+// =========================
+// 主函数
+// =========================
 export async function onRequestGet(context) {
   if (context.request.method === 'OPTIONS') {
     return new Response(null, { headers: CORS_HEADERS });
   }
 
   try {
-    let indexCounter = 0;
-    const fetchPromises = RSS_SOURCES.map(async (source) => {
-      try {
-        const resp = await fetch(source.url, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
-          cf: { cacheTtl: 300 },
-        });
-        if (!resp.ok) return [];
-        const xml = await resp.text();
-        const items = parseRSS(xml, source.type, source.source, indexCounter);
-        indexCounter += items.length;
-        return items;
-      } catch (e) {
-        return [];
-      }
-    });
+    // 并行获取3个API的数据
+    const [gdeltNews, crossrefNews, pubmedNews] = await Promise.all([
+      fetchGDELT(),
+      fetchCrossref(),
+      fetchPubMed(),
+    ]);
 
-    const results = await Promise.all(fetchPromises);
-    let allNews = results.flat();
+    let allNews = [...gdeltNews, ...crossrefNews, ...pubmedNews];
+
+    // 去重(按标题)
+    const seen = new Set();
+    allNews = allNews.filter(n => {
+      const key = n.title.toLowerCase().substring(0, 50);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
     // 确保分类均衡
     if (allNews.length > 0) {
@@ -225,9 +233,12 @@ export async function onRequestGet(context) {
     allNews.sort((a, b) => b.time.localeCompare(a.time));
     allNews = allNews.slice(0, 20);
 
-    // 抓取第一条新闻的 og:image 作为 banner 图片
+    // 获取banner图片(优先从GDELT的socialimage)
     let bannerImage = '';
-    if (allNews.length > 0 && allNews[0].url) {
+    const withImage = allNews.find(n => n.image);
+    if (withImage) {
+      bannerImage = withImage.image;
+    } else if (allNews.length > 0 && allNews[0].url) {
       try {
         const artResp = await fetch(allNews[0].url, {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
@@ -238,13 +249,14 @@ export async function onRequestGet(context) {
           const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
           if (ogMatch) bannerImage = ogMatch[1];
         }
-      } catch (e) { /* 忽略图片抓取失败 */ }
+      } catch (e) { /* 忽略 */ }
     }
 
     return new Response(JSON.stringify({
       code: 200,
-      message: allNews.length > 0 ? 'success' : 'no live data available, fallback to local',
-      source: 'live-rss',
+      message: allNews.length > 0 ? 'success' : 'no live data available',
+      source: 'live-json-api',
+      apis: ['GDELT', 'Crossref', 'PubMed'],
       count: allNews.length,
       bannerImage,
       fetchedAt: new Date().toISOString(),
@@ -258,9 +270,6 @@ export async function onRequestGet(context) {
       code: 500,
       message: e.message,
       data: null,
-    }), {
-      status: 500,
-      headers: CORS_HEADERS,
-    });
+    }), { status: 500, headers: CORS_HEADERS });
   }
 }
