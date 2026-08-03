@@ -91,22 +91,41 @@ async function trackVisitor() {
   } catch (e) { console.log("追踪失败", e); }
 }
 
-// ===== 排行榜(垂直滚动,每次显示3条) =====
+// ===== 排行榜(垂直滚动,每次显示3条,包含0收藏新闻) =====
 let rankingTimer = null;
 let rankingPos = 0;
 async function loadRanking() {
   try {
+    // 获取排行榜数据(已收藏的)
     const resp = await fetch("/api/ranking");
-    if (!resp.ok) { rankingCarouselEl.innerHTML = '<div class="ranking-loading">暂无排行数据</div>'; return; }
-    const json = await resp.json();
-    const items = json.data || [];
-    if (items.length === 0) {
-      rankingCarouselEl.innerHTML = '<div class="ranking-loading">暂无收藏数据,收藏新闻后这里会显示排行榜</div>';
+    let rankedItems = [];
+    if (resp.ok) {
+      const json = await resp.json();
+      rankedItems = json.data || [];
+    }
+
+    // 合并当前新闻数据(0收藏的也显示)
+    const rankedTitles = new Set(rankedItems.map(i => i.news_title));
+    const unrankedNews = newsData
+      .filter(n => !rankedTitles.has(n.title))
+      .map(n => ({
+        news_title: n.title,
+        news_url: n.url || '',
+        news_source: n.source || '',
+        news_type: n.type || '',
+        favorite_count: 0,
+      }));
+
+    // 合并并排序:有收藏的在前,0收藏的在后,取前10
+    const allItems = [...rankedItems, ...unrankedNews].slice(0, 10);
+    if (allItems.length === 0) {
+      rankingCarouselEl.innerHTML = '<div class="ranking-loading">暂无新闻数据</div>';
       return;
     }
+
     // 渲染所有条目到内层滚动容器
-    const cardsHtml = items.map((item, i) => {
-      const rank = item.rank || i + 1;
+    const cardsHtml = allItems.map((item, i) => {
+      const rank = i + 1;
       const isTop3 = rank <= 3;
       const titleClass = isTop3 ? `ranking-title top${rank}` : "ranking-title";
       const flameHtml = isTop3 ? '<span class="flame-icon"></span>' : '';
@@ -127,15 +146,15 @@ async function loadRanking() {
     }).join("");
     rankingCarouselEl.innerHTML = `<div class="ranking-inner" id="rankingInner">${cardsHtml}</div>`;
 
-    // 启动自动滚动(移动内层,外层overflow:hidden裁剪)
+    // 启动自动滚动
     const innerEl = document.getElementById("rankingInner");
     if (rankingTimer) clearInterval(rankingTimer);
     rankingPos = 0;
     if (innerEl) innerEl.style.transform = 'translateY(0)';
-    if (items.length > 3 && innerEl) {
+    if (allItems.length > 3 && innerEl) {
       rankingTimer = setInterval(() => {
         rankingPos++;
-        if (rankingPos > items.length - 3) rankingPos = 0;
+        if (rankingPos > allItems.length - 3) rankingPos = 0;
         innerEl.style.transform = `translateY(-${rankingPos * 88}px)`;
       }, 3000);
     }
