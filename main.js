@@ -14,6 +14,7 @@ let categoryLabels = CATEGORY_LABEL;
 let dataSource = "inline";
 let bannerImageUrl = "";
 let currentFilter = "all";
+let activeFilters = new Set(); // 多选筛选集合
 
 // ===== 访客ID =====
 function getVisitorId() {
@@ -315,8 +316,19 @@ function renderNews(filter = "all") {
   if (filter === "favorites") {
     const favs = getLocalFavorites();
     list = favs.map(f => ({ ...f, time: "★", important: false }));
+  } else if (activeFilters.size > 0) {
+    // 多选筛选:只显示选中的分类
+    list = newsData.filter(item => activeFilters.has(item.type));
+    // 追加localStorage中收藏但不在当前列表里的文章(且属于选中分类)
+    const existingTitles = new Set(list.map(n => n.title));
+    const favs = getLocalFavorites();
+    favs.forEach(f => {
+      if (!existingTitles.has(f.title) && activeFilters.has(f.type)) {
+        list.push({ ...f, time: "★", important: false });
+      }
+    });
   } else {
-    list = filter === "all" ? [...newsData] : newsData.filter(item => item.type === filter);
+    list = [...newsData];
     // 把localStorage中收藏但不在当前新闻列表里的文章追加到列表末尾
     const existingTitles = new Set(list.map(n => n.title));
     const favs = getLocalFavorites();
@@ -347,12 +359,39 @@ masonryEl.addEventListener("click", (e) => {
   }
 });
 
-// 筛选按钮
+// 筛选按钮(多选)
 document.querySelectorAll(".filter-btn").forEach(btn => {
   btn.addEventListener("click", () => {
-    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    renderNews(btn.dataset.filter);
+    const f = btn.dataset.filter;
+    if (f === "favorites") {
+      // 收藏夹:独立视图
+      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeFilters.clear();
+      renderNews("favorites");
+    } else if (f === "all") {
+      // 全部:清空多选
+      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      activeFilters.clear();
+      renderNews("all");
+    } else {
+      // 分类按钮:多选切换
+      document.querySelector('[data-filter="all"]').classList.remove("active");
+      document.querySelector('[data-filter="favorites"]').classList.remove("active");
+      if (activeFilters.has(f)) {
+        activeFilters.delete(f);
+        btn.classList.remove("active");
+      } else {
+        activeFilters.add(f);
+        btn.classList.add("active");
+      }
+      // 如果没有选中任何分类,回到"全部"
+      if (activeFilters.size === 0) {
+        document.querySelector('[data-filter="all"]').classList.add("active");
+      }
+      renderNews("all");
+    }
   });
 });
 
