@@ -1457,19 +1457,31 @@ composerInput.addEventListener("input", () => {
 
 // ----- 附属子面板槽切换 -----
 const subPanels = { citation: $("subCitation"), tags: $("subTags") };
+function closeSubPanels() {
+  Object.values(subPanels).forEach(p => { p.hidden = true; });
+  document.querySelectorAll(".sub-tab").forEach(t => t.classList.remove("active"));
+}
 document.querySelectorAll(".sub-tab").forEach(tab => {
   tab.addEventListener("click", () => {
     const name = tab.dataset.sub;
     const panel = subPanels[name];
     const willOpen = panel.hidden;
-    document.querySelectorAll(".sub-tab").forEach(t => t.classList.toggle("active", t === tab && willOpen));
-    Object.values(subPanels).forEach(p => { p.hidden = true; });
+    closeSubPanels();
     if (willOpen) {
+      tab.classList.add("active");
       panel.hidden = false;
       if (name === "citation") renderLitPanel();
     }
   });
 });
+// 自动收起:点击面板槽以外的区域(且没有正在选中文本)时关闭;发送消息时也关闭
+document.addEventListener("click", (e) => {
+  if (e.target.closest(".subdock")) return;
+  const sel = window.getSelection();
+  if (sel && !sel.isCollapsed) return;
+  closeSubPanels();
+});
+$("composer").addEventListener("submit", closeSubPanels);
 
 // 文献引用预览:取研究类新闻以引用格式展示
 function renderLitPanel() {
