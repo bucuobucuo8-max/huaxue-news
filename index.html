@@ -4,6 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>化学智能体工作台 · Chemistry Agent</title>
+<script>
+// MathJax 配置:加载 mhchem 扩展以支持 \ce{} 化学方程式
+window.MathJax = {
+  loader: { load: ['[tex]/mhchem'] },
+  tex: {
+    packages: { '[+]': ['mhchem'] },
+    inlineMath: [['\\(', '\\)']],
+    displayMath: [['\\[', '\\]']],
+  },
+  options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
 <style>
 /* ================= 全局变量与基础 ================= */
 :root {
@@ -171,6 +184,9 @@ body::before {
   box-shadow: 0 0 18px rgba(103, 232, 249, 0.08);
 }
 .bubble .bubble-hint { color: var(--muted); font-size: 13px; }
+/* MathJax 渲染的化学方程式:过长可横向滚动,颜色继承气泡 */
+.bubble mjx-container { overflow-x: auto; overflow-y: hidden; max-width: 100%; color: inherit; }
+.bubble mjx-container[display="true"] { margin: 10px 0; }
 .bubble ul { padding-left: 18px; margin: 6px 0; }
 .bubble li { margin: 3px 0; }
 .typing { display: inline-flex; gap: 5px; padding: 4px 2px; }
@@ -1331,12 +1347,24 @@ chatScroll.addEventListener("drop", (e) => {
 
 function scrollChat() { chatScroll.scrollTop = chatScroll.scrollHeight; }
 
+// 渲染气泡内的数学/化学公式(MathJax 异步加载,未就绪时延迟重试)
+function typesetMath(el) {
+  if (window.MathJax && window.MathJax.typesetPromise) {
+    window.MathJax.typesetPromise([el]).catch(() => {});
+  } else {
+    setTimeout(() => {
+      if (window.MathJax && window.MathJax.typesetPromise) window.MathJax.typesetPromise([el]).catch(() => {});
+    }, 1200);
+  }
+}
+
 function addMessage(role, html) {
   const el = document.createElement("div");
   el.className = "msg " + role;
   el.innerHTML = `<div class="bubble">${html}</div>`;
   chatInner.appendChild(el);
   scrollChat();
+  typesetMath(el);
   return el;
 }
 function addUserMessage(text) { addMessage("user", escapeHtml(text)); }
