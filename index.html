@@ -1406,6 +1406,14 @@ async function handleUserText(text) {
       try {
         replyText = await callAgentChat(text);
         replyHtml = fmtReply(replyText);
+        // Agent 回复中的 [MOL]…[/MOL] 标记 → 渲染分子结构卡片
+        const molMarker = replyText.match(/\[MOL\](.+?)\[\/MOL\]/i);
+        if (molMarker) {
+          replyHtml = fmtReply(replyText.replace(molMarker[0], "").trim());
+          const molResult = await fetchMolecule(molMarker[1].trim());
+          replyHtml += moleculeCardHtml(molResult);
+          replyText = replyText.replace(molMarker[0], "").trim(); // 历史中不保留标记
+        }
       } catch (e) {
         console.log("Agent 对话失败", e);
         replyHtml = `⚠️ 智能体暂时无法应答(${escapeHtml(e.message || "网络错误")}),请稍后再试。`;
@@ -1547,14 +1555,15 @@ function moleculeCardHtml(r) {
     <span class="bubble-hint">数据源:PubChem CID ${p.CID} · 想进一步了解它的性质?直接继续问我。</span>`;
 }
 
-// 从用户消息中识别分子结构查询意图:/mol X、/分子 X、「X的结构式」「画一下X的结构」等
+// 从用户消息中识别分子结构查询意图:/mol X、/分子 X、「X的结构式」「生成X的分子式图像」等
 function parseMoleculeQuery(text) {
   let m = text.match(/^\/(?:mol|分子)\s*[:：]?\s*(.+)$/i);
   if (m) return m[1].trim();
-  m = text.match(/^(?:画|生成|显示|看看|查)?一?[下张个]?(.{1,24}?)(?:的)?(?:分子)?结构[式图]?[。!！？?]*$/);
+  m = text.match(/^(?:帮我|给我|我想看?|我想看看|请)?(?:画|生成|画出|显示|看看|查|做)?一?[下张个幅]?(.{1,24}?)(?:的)?(?:分子)?(?:结构式|结构图|结构|分子式|分子模型)(?:图|图像|可视化|的可视化图像)?[。!！？?]*$/);
   if (m) {
     const q = m[1].trim();
-    if (q && !/^(我|你|它|这|那|哪|什么|怎么|为什么)/.test(q)) return q;
+    // 排除代词/疑问词开头与"分子式"本身被当成化合物名的情况
+    if (q && !/^(我|你|它|这|那|哪|什么|怎么|为什么)/.test(q) && !/^(分子式|结构式|结构图|分子|化合物)$/.test(q)) return q;
   }
   return null;
 }
