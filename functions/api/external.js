@@ -55,9 +55,12 @@ function isChemistryRelated(title, summary, journal) {
 
 function classifyNews(title, desc) {
   const text = (title + ' ' + desc).toLowerCase();
-  if (/award|prize|medal|winner|honor|lecture|recogni|荣誉|奖|获奖/.test(text)) return 'award';
-  if (/launch|product|new material|nanomaterial|catalyst|polymer|coating|resin|biobased|recycl|nanocrystal|nanoparticle|推出|发布|新品|材料/.test(text)) return 'product';
-  if (/company|expand|invest|build|partner|agreement|announce|facility|plant|acquir|merger|funding|inaugurat|nuclear|hydrogen plant|公司|扩建|投资|合作/.test(text)) return 'company';
+  // 奖项:必须有明确的"获得/授予奖项"语境,单独的 lecture/honor/奖 不算
+  if (/nobel|获奖|荣获|摘得|赢得|被授予|(\bwon|win\w*|winner|awarded|honou?red|receiv\w*)\b.{0,30}\b(award|prize|medal)|\b(award|prize|medal)\b.{0,30}\b(for|to|in recognition)/.test(text)) return 'award';
+  // 产品:必须有"发布/上市/量产/商业化"动作,研究中出现 catalyst/polymer 等材料词不算
+  if (/(launch\w*|unveil\w*|debut\w*|roll\w*\s*out|releases?)\b.{0,30}\b(product|material|coating|resin|device|battery|platform)|commercia\w+|推出|新品|上市|量产|正式发布/.test(text)) return 'product';
+  // 公司:并购/投资/建厂/合作等商业动作(invest 排除 investigate;raise 需接资金语境)
+  if (/acqui\w+|merger|joint venture|funding|\binvest(?!igat)\w*|partnership|new (plant|facility)|inaugurat\w+|raise[sd]?\s+(\$|usd|funding|capital)|公司|收购|融资|投资|扩建|建厂|战略合作/.test(text)) return 'company';
   return 'research';
 }
 
@@ -105,23 +108,8 @@ function isValidArticle(title, url) {
   return true;
 }
 
-function balanceCategories(news) {
-  const types = ['award', 'product', 'company', 'research'];
-  const counts = {};
-  types.forEach(t => counts[t] = 0);
-  news.forEach(n => { if (counts[n.type] !== undefined) counts[n.type]++; });
-  types.forEach(t => {
-    if (t !== 'research' && counts[t] === 0) {
-      const researchItems = news.filter(n => n.type === 'research' && counts['research'] > 1);
-      if (researchItems.length > 0) {
-        researchItems[0].type = t;
-        counts['research']--;
-        counts[t]++;
-      }
-    }
-  });
-  return news;
-}
+// 注:不再做"分类平衡"——以前会为凑齐四个分类把研究类新闻强行改标为奖项/产品,造成误分类。
+// 现在分类完全由 classifyNews 按内容判定,某分类没有新闻就显示没有。
 
 // =========================
 // 1. GDELT API - 全球化学新闻
@@ -361,10 +349,6 @@ export async function onRequestGet(context) {
       seen.add(key);
       return true;
     });
-
-    if (allNews.length > 0) {
-      allNews = balanceCategories(allNews);
-    }
 
     allNews.sort((a, b) => b.time.localeCompare(a.time));
     allNews = allNews.slice(0, 20);
