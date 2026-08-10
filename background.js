@@ -10,7 +10,7 @@
   const SETTINGS = {
     stars: compact ? 280 : 620,
     chemicalObjects: compact ? 13 : 24,
-    trailSegments: compact ? 24 : 40
+    trailSegments: compact ? 36 : 64
   };
 
   const renderer = new THREE.WebGLRenderer({
@@ -312,13 +312,13 @@
 
         void main() {
           float distanceFromCore = abs(vUv.y - 0.5) * 2.0;
-          float core = 1.0 - smoothstep(0.0, 0.16, distanceFromCore);
-          float halo = 1.0 - smoothstep(0.08, 1.0, distanceFromCore);
+          float core = 1.0 - smoothstep(0.0, 0.22, distanceFromCore);
+          float halo = 1.0 - smoothstep(0.05, 1.0, distanceFromCore);
           float tailFade = mix(1.0, 0.68, vUv.x);
           float softJoin = smoothstep(0.0, 0.08, vUv.x) * smoothstep(0.0, 0.08, 1.0 - vUv.x);
           vec3 color = mix(uColor, vec3(0.72, 0.50, 1.0), vUv.x * 0.55);
-          float alpha = (core * 0.90 + halo * 0.32) * tailFade * softJoin * uOpacity;
-          gl_FragColor = vec4(color * 1.8, min(1.0, alpha * 1.35));
+          float alpha = (core * 1.0 + halo * 0.55) * tailFade * softJoin * uOpacity;
+          gl_FragColor = vec4(color * 2.6, min(1.0, alpha * 1.9));
         }
       `
     });
@@ -334,7 +334,7 @@
     group.userData = {
       active: false,
       age: 0,
-      life: reducedMotion ? 0.28 : 0.62,
+      life: reducedMotion ? 0.4 : 1.15,
       brightness: 1,
       trail,
       trailMaterial
@@ -400,15 +400,15 @@
 
     const now = performance.now();
     const movement = hitPoint.distanceTo(lastCursorWorld);
-    if (movement < 0.035 || now - lastTrailAt < 13) return;
+    if (movement < 0.02 || now - lastTrailAt < 10) return;
     lastTrailAt = now;
 
     const group = cursorTrails[cursorTrailIndex];
     cursorTrailIndex = (cursorTrailIndex + 1) % cursorTrails.length;
     const data = group.userData;
     const tailDirection = lastCursorWorld.clone().sub(hitPoint).normalize();
-    const visualLength = movement + 0.24;
-    const brightness = Math.min(1, 0.68 + movement * 1.8);
+    const visualLength = movement + 0.32;
+    const brightness = Math.min(1, 0.85 + movement * 1.8);
 
     group.visible = true;
     group.position.copy(hitPoint);
@@ -417,11 +417,11 @@
     data.brightness = brightness;
     data.trail.position.copy(tailDirection).multiplyScalar(visualLength * 0.5);
     data.trail.rotation.z = Math.atan2(tailDirection.y, tailDirection.x);
-    data.trail.scale.set(visualLength, 0.095 + Math.min(movement * 0.12, 0.085), 1);
+    data.trail.scale.set(visualLength, 0.16 + Math.min(movement * 0.18, 0.14), 1);
     data.trailMaterial.uniforms.uOpacity.value = brightness;
     cursorHead.position.copy(hitPoint);
-    cursorHead.scale.setScalar(0.20 + brightness * 0.10);
-    cursorHeadMaterial.opacity = Math.min(1, brightness * 1.12);
+    cursorHead.scale.setScalar(0.3 + brightness * 0.16);
+    cursorHeadMaterial.opacity = Math.min(1, brightness * 1.3);
     cursorHead.visible = true;
 
     lastCursorWorld.copy(hitPoint);
@@ -465,7 +465,7 @@
       if (!data.active) return;
       data.age += delta;
       const fade = Math.max(0, 1 - data.age / data.life);
-      const opacity = Math.pow(fade, 1.45) * data.brightness;
+      const opacity = Math.pow(fade, 1.1) * data.brightness;
       data.trailMaterial.uniforms.uOpacity.value = opacity;
       activeTrailCount++;
       if (fade <= 0) {
