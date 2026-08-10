@@ -1166,14 +1166,36 @@ function explainPanelHtml(item) {
    Agent 工作台
    ========================================================= */
 
-// ----- 后端对接钩子(预留) -----
-// 接入真实 Agent 后端时,实现此函数并返回 AI 回复的 HTML 字符串,例如:
-//   window.AGENT_BACKEND_HOOK = async (text) => {
-//     const resp = await fetch("/api/agent/chat", { method: "POST", ... });
-//     return (await resp.json()).replyHtml;
-//   };
-// 返回 null 时使用内置演示回复。
+// ----- Agent 后端对接 -----
+// 默认实现:调用本站 /api/ai/chat(DeepSeek)。
+// 如需换成其他 Agent 后端,设置 window.AGENT_BACKEND_HOOK = async (text, ctx) => replyHtml 即可覆盖。
 window.AGENT_BACKEND_HOOK = window.AGENT_BACKEND_HOOK || null;
+
+// 对话历史(纯文本,用于多轮上下文)
+const chatHistory = [];
+
+// 调用 /api/ai/chat,返回纯文本回复
+async function callAgentChat(text) {
+  const resp = await fetch("/api/ai/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: text,
+      history: chatHistory.slice(-10),
+      news: newsData.slice(0, 15).map(n => ({ title: n.title, summary: n.summary, type: n.type })),
+    }),
+  });
+  const json = await resp.json();
+  if (json.code === 200 && json.data) return json.data;
+  throw new Error(json.message || "Agent 接口错误");
+}
+
+// AI 纯文本回复 → 气泡 HTML(转义 + 换行/列表简单排版)
+function fmtReply(text) {
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/\n/g, "<br>");
+}
 
 function scrollChat() { chatScroll.scrollTop = chatScroll.scrollHeight; }
 
@@ -1226,15 +1248,27 @@ async function handleUserText(text) {
     }
   } else {
     let replyHtml = null;
+    let replyText = "";
     if (typeof window.AGENT_BACKEND_HOOK === "function") {
-      try { replyHtml = await window.AGENT_BACKEND_HOOK(text, { newsData }); } catch (e) { console.log("Agent 后端调用失败", e); }
-    }
-    if (!replyHtml) {
-      await new Promise(r => setTimeout(r, 700));
-      replyHtml = stubReply(text);
+      // 自定义后端钩子(返回 HTML)
+      try { replyHtml = await window.AGENT_BACKEND_HOOK(text, { newsData, chatHistory }); } catch (e) { console.log("Agent 后端调用失败", e); }
+    } else {
+      // 默认:DeepSeek 化学智能体
+      try {
+        replyText = await callAgentChat(text);
+        replyHtml = fmtReply(replyText);
+      } catch (e) {
+        console.log("Agent 对话失败", e);
+        replyHtml = `⚠️ 智能体暂时无法应答(${escapeHtml(e.message || "网络错误")}),请稍后再试。`;
+      }
     }
     typingEl.remove();
     addMessage("ai", replyHtml);
+    // 成功的真实回复写入对话历史
+    if (replyText) {
+      chatHistory.push({ role: "user", content: text }, { role: "assistant", content: replyText });
+      if (chatHistory.length > 20) chatHistory.splice(0, chatHistory.length - 20);
+    }
   }
   agentBusy = false;
   composerSend.disabled = false;
