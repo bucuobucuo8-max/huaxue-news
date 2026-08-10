@@ -198,6 +198,21 @@ body::before {
 .bubble mjx-container[display="true"] { margin: 10px 0; }
 .bubble ul { padding-left: 18px; margin: 6px 0; }
 .bubble li { margin: 3px 0; }
+/* 回复下方的推荐追问按钮 */
+.suggest-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.suggest-chip {
+  appearance: none;
+  border: 1px solid rgba(103, 232, 249, 0.32);
+  background: rgba(103, 232, 249, 0.08);
+  color: var(--cyan);
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+.suggest-chip:hover { color: #fff; background: linear-gradient(135deg, #67e8f9, #a78bfa); border-color: transparent; box-shadow: 0 4px 14px rgba(103, 232, 249, 0.25); }
 .typing { display: inline-flex; gap: 5px; padding: 4px 2px; }
 .typing i {
   width: 7px; height: 7px; border-radius: 50%;
@@ -1293,6 +1308,14 @@ function fmtReply(text) {
     .replace(/\n/g, "<br>");
 }
 
+// 推荐追问按钮组
+function suggestChipsHtml(questions) {
+  const list = questions.map(q => q.trim()).filter(q => q && q.length <= 40).slice(0, 3);
+  if (list.length === 0) return "";
+  return `<div class="suggest-chips">` + list.map(q =>
+    `<button class="suggest-chip" data-q="${escapeHtml(q)}">💬 ${escapeHtml(q)}</button>`).join("") + `</div>`;
+}
+
 // ===== 附加文献(拖拽/点击手柄) =====
 const attachedArticles = [];
 const attachBar = $("attachBar");
@@ -1443,14 +1466,20 @@ async function handleUserText(text) {
       // 默认:DeepSeek 化学智能体
       try {
         replyText = await callAgentChat(text);
+        // 提取标记:[MOL] 分子结构、[SUGGEST] 推荐追问;正文中剔除标记
+        const molMarker = replyText.match(/\[MOL\]([\s\S]+?)\[\/MOL\]/i);
+        const sugMarker = replyText.match(/\[SUGGEST\]([\s\S]+?)\[\/SUGGEST\]/i);
+        replyText = replyText
+          .replace(/\[MOL\][\s\S]+?\[\/MOL\]/gi, "")
+          .replace(/\[SUGGEST\][\s\S]+?\[\/SUGGEST\]/gi, "")
+          .trim();
         replyHtml = fmtReply(replyText);
-        // Agent 回复中的 [MOL]…[/MOL] 标记 → 渲染分子结构卡片
-        const molMarker = replyText.match(/\[MOL\](.+?)\[\/MOL\]/i);
         if (molMarker) {
-          replyHtml = fmtReply(replyText.replace(molMarker[0], "").trim());
           const molResult = await fetchMolecule(molMarker[1].trim());
           replyHtml += moleculeCardHtml(molResult);
-          replyText = replyText.replace(molMarker[0], "").trim(); // 历史中不保留标记
+        }
+        if (sugMarker) {
+          replyHtml += suggestChipsHtml(sugMarker[1].split("|"));
         }
       } catch (e) {
         console.log("Agent 对话失败", e);
@@ -1491,6 +1520,13 @@ composerInput.addEventListener("keydown", (e) => {
 composerInput.addEventListener("input", () => {
   composerInput.style.height = "auto";
   composerInput.style.height = Math.min(composerInput.scrollHeight, 120) + "px";
+});
+
+// 点击推荐追问按钮:直接作为用户消息发送
+chatInner.addEventListener("click", (e) => {
+  const chip = e.target.closest(".suggest-chip");
+  if (!chip || agentBusy) return;
+  handleUserText(chip.dataset.q);
 });
 
 // ----- 附属子面板槽切换 -----
@@ -2460,7 +2496,7 @@ document.querySelectorAll(".ai-tab").forEach(tab => {
    ========================================================= */
 (async function init() {
   // 欢迎消息
-  addMessage("ai", `你好,我是你的<b>化学智能体</b> ⚗️<br><span class="bubble-hint">我可以帮你分析化学资讯、解读文献、追踪研究热点。你现在可以:</span><ul><li>直接输入化学问题与我对话</li><li>问我「<b>布洛芬的结构式</b>」或输入 <b>/mol 布洛芬</b>,我会画出分子结构图 🧬</li><li>输入 <b>/news</b> 唤起今日新闻文献面板</li><li>在新闻面板中<b>选中文本</b>,一键发送给我解读;把卡片 ⠿ 手柄<b>拖到对话区</b>,我会阅读原文网页后作答</li></ul>`);
+  addMessage("ai", `你好,我是你的<b>化学智能体</b> ⚗️<br><span class="bubble-hint">我可以帮你分析化学资讯、解读文献、追踪研究热点。你现在可以:</span><ul><li>直接输入化学问题与我对话</li><li>问我「<b>布洛芬的结构式</b>」或输入 <b>/mol 布洛芬</b>,我会画出分子结构图 🧬</li><li>输入 <b>/news</b> 唤起今日新闻文献面板</li><li>在新闻面板中<b>选中文本</b>,一键发送给我解读;把卡片 ⠿ 手柄<b>拖到对话区</b>,我会阅读原文网页后作答</li></ul>试试这些:` + suggestChipsHtml(["今日化学热点有哪些?", "布洛芬的结构式", "帮我总结今日新闻"]));
   // 新闻骨架屏
   masonryEl.innerHTML = Array.from({ length: 3 }, () => `
     <div class="story skeleton-card" aria-hidden="true">
