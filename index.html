@@ -297,37 +297,34 @@ body::before {
 .mol-3d-box:active { cursor: grabbing; }
 .mol-3d { width: 100%; height: 100%; position: relative; }
 .mol-3d-loading { font-size: 11px; color: #5b7a8c; text-align: center; padding-top: 86px; }
-/* 化学反应演示卡片:反应物 ⇌ 生成物循环变换 */
+/* 化学反应演示卡片:反应物与生成物同屏展示,动画箭头指向生成方向 */
 .rxn-stage {
   position: relative;
-  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 200px;
   margin-top: 10px;
+  padding: 28px 14px 14px;
   border-radius: 14px;
   background: rgba(4, 10, 22, 0.5);
   border: 1px solid rgba(103, 232, 249, 0.25);
   box-shadow: 0 0 20px rgba(103, 232, 249, 0.08);
-  overflow: hidden;
+  overflow-x: auto;
 }
-.rxn-layer {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding-top: 18px;
+.rxn-side { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+.rxn-arrow-big {
+  flex: 0 0 auto;
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--cyan);
+  text-shadow: 0 0 12px rgba(103, 232, 249, 0.6);
+  animation: rxnPulse 1.6s ease-in-out infinite;
 }
-.rxn-a { animation: rxnFadeA 6s ease-in-out infinite; }
-.rxn-b { animation: rxnFadeB 6s ease-in-out infinite; }
-@keyframes rxnFadeA {
-  0%, 42% { opacity: 1; transform: scale(1); }
-  52%, 88% { opacity: 0; transform: scale(0.92); }
-  100% { opacity: 1; transform: scale(1); }
-}
-@keyframes rxnFadeB {
-  0%, 42% { opacity: 0; transform: scale(0.92); }
-  52%, 88% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.92); }
+@keyframes rxnPulse {
+  0%, 100% { opacity: 0.45; transform: translateX(0); }
+  50% { opacity: 1; transform: translateX(5px); }
 }
 .rxn-label {
   position: absolute;
@@ -338,7 +335,7 @@ body::before {
   letter-spacing: 0.08em;
   color: var(--cyan);
 }
-.rxn-b .rxn-label { color: var(--violet); }
+.rxn-label.rxn-label-r { left: auto; right: 12px; color: var(--violet); }
 .rxn-mol {
   width: 130px;
   height: 150px;
@@ -355,15 +352,6 @@ body::before {
   padding: 8px;
   word-break: break-all;
   font-family: monospace;
-}
-.rxn-arrow {
-  position: absolute;
-  bottom: 6px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 11px;
-  color: var(--muted);
-  letter-spacing: 0.1em;
 }
 .mol-chat-props { min-width: 0; flex: 1; }
 .mol-prop { display: flex; gap: 6px; font-size: 12px; margin-top: 3px; }
@@ -1788,10 +1776,12 @@ function reactionCardHtml(rxnExpr) {
   const molHtml = (list) => list.map(s =>
     `<div class="rxn-mol" data-smiles="${escapeHtml(s)}"><div class="mol-3d-loading">加载中…</div></div>`).join("");
   return `
-    <div class="rxn-stage">
-      <div class="rxn-layer rxn-a"><span class="rxn-label">反应物</span>${molHtml(reactants)}</div>
-      <div class="rxn-layer rxn-b"><span class="rxn-label">生成物</span>${molHtml(products)}</div>
-      <span class="rxn-arrow">⇌ 循环演示(系数见上方方程式)</span>
+    <div class="rxn-stage" title="每个分子均可拖拽旋转、滚轮缩放">
+      <span class="rxn-label">反应物</span>
+      <span class="rxn-label rxn-label-r">生成物</span>
+      <div class="rxn-side">${molHtml(reactants)}</div>
+      <span class="rxn-arrow-big">⟶</span>
+      <div class="rxn-side">${molHtml(products)}</div>
     </div>`;
 }
 
