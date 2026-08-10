@@ -234,59 +234,13 @@ body::before {
 .sub-panel { padding: 6px 14px 14px; }
 .sub-panel[hidden] { display: none; }
 
-/* 分子可视化面板 */
-.mol-search { display: flex; gap: 8px; margin-bottom: 10px; }
-#molInput {
-  flex: 1;
-  min-width: 0;
-  appearance: none;
-  border: 1px solid rgba(103, 232, 249, 0.3);
-  background: rgba(8, 18, 34, 0.55);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 9px 13px;
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.25s ease, box-shadow 0.25s ease;
-}
-#molInput::placeholder { color: rgba(210, 232, 255, 0.35); }
-#molInput:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.12); }
-#molBtn {
-  appearance: none;
-  border: none;
-  border-radius: 10px;
-  padding: 9px 16px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  color: #fff;
-  background: linear-gradient(135deg, #67e8f9, #a78bfa);
-  transition: box-shadow 0.25s ease;
-  white-space: nowrap;
-}
-#molBtn:hover:not(:disabled) { box-shadow: 0 6px 18px rgba(103, 232, 249, 0.35); }
-#molBtn:disabled { opacity: 0.6; cursor: wait; }
-.mol-examples { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.mol-examples button {
-  appearance: none;
-  border: 1px solid rgba(103, 232, 249, 0.28);
-  background: rgba(103, 232, 249, 0.08);
-  color: var(--cyan);
-  border-radius: 999px;
-  padding: 4px 12px;
-  font-size: 11.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.25s ease;
-}
-.mol-examples button:hover { border-color: var(--cyan); box-shadow: 0 3px 10px rgba(103, 232, 249, 0.2); }
-.molecule-stage { display: flex; align-items: center; gap: 18px; }
-.molecule-stage svg { flex: 0 0 auto; animation: molSpin 14s linear infinite; }
+/* 分子结构卡片(对话内渲染) */
 @keyframes molSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.mol-chat { display: flex; align-items: center; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
 .mol-img-wrap {
   flex: 0 0 auto;
-  width: 180px;
-  height: 180px;
+  width: 150px;
+  height: 150px;
   border-radius: 14px;
   background: #f4f8fb; /* PubChem 结构图为黑线透明底,需浅色底才能看清 */
   border: 1px solid rgba(103, 232, 249, 0.35);
@@ -297,11 +251,10 @@ body::before {
   overflow: hidden;
 }
 .mol-img-wrap img { max-width: 92%; max-height: 92%; display: block; }
-.molecule-caption { font-size: 13px; color: var(--muted); line-height: 1.7; min-width: 0; }
-.molecule-caption b { color: var(--cyan); display: block; margin-bottom: 4px; font-size: 14px; }
+.mol-chat-props { min-width: 0; flex: 1; }
 .mol-prop { display: flex; gap: 6px; font-size: 12px; margin-top: 3px; }
 .mol-prop dt { color: var(--muted); flex: 0 0 auto; }
-.mol-prop dd { color: #e0f2fe; font-weight: 600; word-break: break-all; }
+.mol-prop dd { color: #e0f2fe; font-weight: 600; word-break: break-all; margin: 0; }
 
 /* 文献引用面板 */
 .lit-item { padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(167, 139, 250, 0.2); background: rgba(8, 18, 34, 0.45); margin-bottom: 8px; }
@@ -1050,38 +1003,8 @@ body.dragging { cursor: col-resize; user-select: none; }
       <!-- 附属子面板槽 -->
       <div class="subdock">
         <div class="subdock-tabs">
-          <button class="sub-tab" data-sub="molecule">🧬 分子可视化</button>
           <button class="sub-tab" data-sub="citation">📚 文献引用</button>
           <button class="sub-tab" data-sub="tags">🏷️ 热点标签</button>
-        </div>
-        <div class="sub-panel" id="subMolecule" hidden>
-          <div class="mol-search">
-            <input id="molInput" type="text" placeholder="输入化合物:支持中文名(如 布洛芬)/ 英文名 / 分子式 / SMILES" autocomplete="off">
-            <button id="molBtn">生成结构</button>
-          </div>
-          <div class="mol-examples" id="molExamples">
-            <button data-q="C6H6">苯 C₆H₆</button>
-            <button data-q="CCO">乙醇 CCO</button>
-            <button data-q="aspirin">阿司匹林</button>
-            <button data-q="caffeine">咖啡因</button>
-            <button data-q="C6H12O6">葡萄糖</button>
-            <button data-q="布洛芬">布洛芬(中文)</button>
-          </div>
-          <div class="molecule-stage">
-            <div class="mol-img-wrap" id="molImgWrap">
-              <svg width="120" height="120" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-                <polygon points="50,10 86,30 86,70 50,90 14,70 14,30" fill="none" stroke="#67e8f9" stroke-width="2"/>
-                <polygon points="50,22 74,36 74,64 50,78 26,64 26,36" fill="none" stroke="#a78bfa" stroke-width="1.4" opacity="0.7"/>
-                <circle cx="50" cy="10" r="6" fill="#67e8f9"/><circle cx="86" cy="30" r="6" fill="#a78bfa"/>
-                <circle cx="86" cy="70" r="6" fill="#67e8f9"/><circle cx="50" cy="90" r="6" fill="#a78bfa"/>
-                <circle cx="14" cy="70" r="6" fill="#67e8f9"/><circle cx="14" cy="30" r="6" fill="#a78bfa"/>
-              </svg>
-            </div>
-            <div class="molecule-caption" id="molInfo">
-              <b>分子结构可视化</b>
-              输入化合物中文名(如 布洛芬)、英文名、分子式或 SMILES,点击「生成结构」,将调用 PubChem 渲染 2D 结构图与基本属性。
-            </div>
-          </div>
         </div>
         <div class="sub-panel" id="subCitation" hidden>
           <div id="litList"><div class="sub-empty">文献加载中…</div></div>
@@ -1434,7 +1357,7 @@ function citationCardsHtml(items) {
 
 // 演示回复(未接入后端时使用)
 function stubReply(text) {
-  return `我已收到你的问题:「<b>${escapeHtml(text)}</b>」。<br><span class="bubble-hint">当前为前端演示模式,接入 Agent 后端后(见 <code>AGENT_BACKEND_HOOK</code> 钩子),此处将返回真实的化学分析结果。</span><br>你现在可以:<ul><li>输入 <b>/news</b> 唤起新闻文献面板</li><li>在新闻面板中<b>选中任意文本</b>,一键发送给我解读</li><li>使用下方子面板预览分子结构、文献引用与热点标签</li></ul>`;
+  return `我已收到你的问题:「<b>${escapeHtml(text)}</b>」。<br><span class="bubble-hint">当前为前端演示模式,接入 Agent 后端后(见 <code>AGENT_BACKEND_HOOK</code> 钩子),此处将返回真实的化学分析结果。</span><br>你现在可以:<ul><li>输入 <b>/news</b> 唤起新闻文献面板</li><li>问我「<b>布洛芬的结构式</b>」直接生成分子结构图 🧬</li><li>在新闻面板中<b>选中任意文本</b>,一键发送给我解读</li><li>把新闻卡片上的 ⠿ 手柄<b>拖到对话区</b>,我会阅读原文网页后作答</li></ul>`;
 }
 
 let agentBusy = false;
@@ -1450,6 +1373,17 @@ async function handleUserText(text) {
     : "";
   addMessage("user", escapeHtml(text) + attachHtml);
   const typingEl = addTyping();
+
+  // 意图:分子结构查询 → 对话内直接渲染结构卡片
+  const molQuery = parseMoleculeQuery(text);
+  if (molQuery) {
+    const result = await fetchMolecule(molQuery);
+    typingEl.remove();
+    addMessage("ai", moleculeCardHtml(result));
+    agentBusy = false;
+    composerSend.disabled = false;
+    return;
+  }
 
   // 指令:唤起新闻文献
   if (/^\/?news/i.test(text) || text.includes("新闻") || text.includes("文献")) {
@@ -1514,7 +1448,7 @@ composerInput.addEventListener("input", () => {
 });
 
 // ----- 附属子面板槽切换 -----
-const subPanels = { molecule: $("subMolecule"), citation: $("subCitation"), tags: $("subTags") };
+const subPanels = { citation: $("subCitation"), tags: $("subTags") };
 document.querySelectorAll(".sub-tab").forEach(tab => {
   tab.addEventListener("click", () => {
     const name = tab.dataset.sub;
@@ -1545,8 +1479,7 @@ function renderLitPanel() {
     </div>`).join("");
 }
 
-// ===== 分子可视化(PubChem PUG REST,免费无密钥) =====
-const molInput = $("molInput"), molBtn = $("molBtn"), molImgWrap = $("molImgWrap"), molInfo = $("molInfo");
+// ===== 分子结构查询(PubChem PUG REST,免费无密钥;中文名经 DeepSeek 转换) =====
 const PUBCHEM = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound";
 
 // 根据输入形态决定查询方式优先级:纯分子式 → fastformula;含 SMILES 特征字符 → smiles;其余按名称(三种方式依次尝试,保证命中)
@@ -1556,16 +1489,13 @@ function molQueryKinds(q) {
   return ["name", "smiles", "fastformula"];
 }
 
-async function renderMolecule(query) {
+// 查询分子结构,返回 { imgUrl, prop, note, query } 或 { error }
+async function fetchMolecule(query) {
   query = (query || "").trim();
-  if (!query) return;
-  molBtn.disabled = true;
-  molBtn.textContent = "生成中…";
-
+  if (!query) return { error: "请输入化合物名称" };
+  let note = "";
   // 中文名:先用 DeepSeek 转成英文名 + SMILES,再查 PubChem
-  let translatedNote = "";
   if (/[一-龥]/.test(query)) {
-    molInfo.innerHTML = `<b>识别中…</b>正在用 AI 将「${escapeHtml(query)}」转换为标准化合物标识。`;
     try {
       const resp = await fetch("/api/ai/compound", {
         method: "POST",
@@ -1573,63 +1503,61 @@ async function renderMolecule(query) {
         body: JSON.stringify({ name: query }),
       });
       const json = await resp.json();
-      if (json.code === 200 && json.data) {
-        const { english, smiles } = json.data;
-        translatedNote = `已自动翻译:「${escapeHtml(query)}」→ <b>${escapeHtml(english || smiles)}</b><br>`;
-        query = smiles || english; // SMILES 查询最精确
+      if (json.code === 200 && json.data && (json.data.smiles || json.data.english)) {
+        note = `已自动翻译:「${escapeHtml(query)}」→ <b>${escapeHtml(json.data.english || json.data.smiles)}</b><br>`;
+        query = json.data.smiles || json.data.english; // SMILES 查询最精确
       } else {
-        molBtn.disabled = false;
-        molBtn.textContent = "生成结构";
-        molInfo.innerHTML = `<b>无法识别「${escapeHtml(query)}」</b>请换用更规范的化合物名称,或直接输入英文名 / 分子式 / SMILES。`;
-        return;
+        return { error: `无法识别「${query}」,请换用更规范的名称,或直接输入英文名 / 分子式 / SMILES。` };
       }
     } catch {
-      molBtn.disabled = false;
-      molBtn.textContent = "生成结构";
-      molInfo.innerHTML = `<b>翻译服务暂不可用</b>请改用英文名 / 分子式 / SMILES 直接查询。`;
-      return;
+      return { error: "翻译服务暂不可用,请改用英文名 / 分子式 / SMILES 直接查询。" };
     }
   }
-
-  molInfo.innerHTML = `${translatedNote}<b>查询中…</b>正在向 PubChem 请求结构数据。`;
-  const kinds = molQueryKinds(query);
-  let hit = null;
-  for (const kind of kinds) {
+  for (const kind of molQueryKinds(query)) {
     try {
       const resp = await fetch(`${PUBCHEM}/${kind}/${encodeURIComponent(query)}/property/MolecularFormula,MolecularWeight,IUPACName,IsomericSMILES/JSON`);
       if (!resp.ok) continue;
       const json = await resp.json();
       const prop = json.PropertyTable && json.PropertyTable.Properties && json.PropertyTable.Properties[0];
-      if (prop) { hit = { kind, prop }; break; }
+      if (prop) {
+        return {
+          imgUrl: `${PUBCHEM}/${kind}/${encodeURIComponent(query)}/PNG`,
+          prop, note, query,
+        };
+      }
     } catch {}
   }
-  molBtn.disabled = false;
-  molBtn.textContent = "生成结构";
-  if (!hit) {
-    molInfo.innerHTML = `<b>未找到「${escapeHtml(query)}」</b>PubChem 无匹配结果。请尝试:英文通用名(如 ethanol)、标准分子式(如 C2H6O)或合法 SMILES(如 CCO)。`;
-    return;
-  }
-  const imgUrl = `${PUBCHEM}/${hit.kind}/${encodeURIComponent(query)}/PNG`;
-  molImgWrap.innerHTML = `<img src="${imgUrl}" alt="${escapeHtml(query)} 结构式">`;
-  const p = hit.prop;
-  molInfo.innerHTML = `
-    ${translatedNote}
-    <b>${escapeHtml(p.IUPACName || query)}</b>
-    <dl>
-      <div class="mol-prop"><dt>分子式</dt><dd>${escapeHtml(p.MolecularFormula || "-")}</dd></div>
-      <div class="mol-prop"><dt>分子量</dt><dd>${escapeHtml(String(p.MolecularWeight || "-"))} g/mol</dd></div>
-      <div class="mol-prop"><dt>SMILES</dt><dd>${escapeHtml(p.IsomericSMILES || "-")}</dd></div>
-      <div class="mol-prop"><dt>数据源</dt><dd>PubChem CID ${p.CID}</dd></div>
-    </dl>`;
+  return { error: `PubChem 未找到「${query}」,请尝试英文通用名、标准分子式或合法 SMILES。` };
 }
-molBtn.addEventListener("click", () => renderMolecule(molInput.value));
-molInput.addEventListener("keydown", (e) => { if (e.key === "Enter") renderMolecule(molInput.value); });
-$("molExamples").addEventListener("click", (e) => {
-  const chip = e.target.closest("[data-q]");
-  if (!chip) return;
-  molInput.value = chip.dataset.q;
-  renderMolecule(chip.dataset.q);
-});
+
+// 对话内分子结构卡片
+function moleculeCardHtml(r) {
+  if (r.error) return `⚠️ ${escapeHtml(r.error)}`;
+  const p = r.prop;
+  return `
+    ${r.note}🧬 <b>${escapeHtml(p.IUPACName || r.query)}</b>
+    <div class="mol-chat">
+      <span class="mol-img-wrap"><img src="${r.imgUrl}" alt="${escapeHtml(r.query)} 结构式"></span>
+      <dl class="mol-chat-props">
+        <div class="mol-prop"><dt>分子式</dt><dd>${escapeHtml(p.MolecularFormula || "-")}</dd></div>
+        <div class="mol-prop"><dt>分子量</dt><dd>${escapeHtml(String(p.MolecularWeight || "-"))} g/mol</dd></div>
+        <div class="mol-prop"><dt>SMILES</dt><dd>${escapeHtml(p.IsomericSMILES || "-")}</dd></div>
+      </dl>
+    </div>
+    <span class="bubble-hint">数据源:PubChem CID ${p.CID} · 想进一步了解它的性质?直接继续问我。</span>`;
+}
+
+// 从用户消息中识别分子结构查询意图:/mol X、/分子 X、「X的结构式」「画一下X的结构」等
+function parseMoleculeQuery(text) {
+  let m = text.match(/^\/(?:mol|分子)\s*[:：]?\s*(.+)$/i);
+  if (m) return m[1].trim();
+  m = text.match(/^(?:画|生成|显示|看看|查)?一?[下张个]?(.{1,24}?)(?:的)?(?:分子)?结构[式图]?[。!！？?]*$/);
+  if (m) {
+    const q = m[1].trim();
+    if (q && !/^(我|你|它|这|那|哪|什么|怎么|为什么)/.test(q)) return q;
+  }
+  return null;
+}
 
 // Agent 侧热点标签
 let agentTags = [];
@@ -2431,7 +2359,7 @@ document.querySelectorAll(".ai-tab").forEach(tab => {
    ========================================================= */
 (async function init() {
   // 欢迎消息
-  addMessage("ai", `你好,我是你的<b>化学智能体</b> ⚗️<br><span class="bubble-hint">我可以帮你分析化学资讯、解读文献、追踪研究热点。你现在可以:</span><ul><li>直接输入化学问题与我对话</li><li>输入 <b>/news</b> 唤起今日新闻文献面板</li><li>在新闻面板中<b>选中文本</b>,一键发送给我解读</li></ul>`);
+  addMessage("ai", `你好,我是你的<b>化学智能体</b> ⚗️<br><span class="bubble-hint">我可以帮你分析化学资讯、解读文献、追踪研究热点。你现在可以:</span><ul><li>直接输入化学问题与我对话</li><li>问我「<b>布洛芬的结构式</b>」或输入 <b>/mol 布洛芬</b>,我会画出分子结构图 🧬</li><li>输入 <b>/news</b> 唤起今日新闻文献面板</li><li>在新闻面板中<b>选中文本</b>,一键发送给我解读;把卡片 ⠿ 手柄<b>拖到对话区</b>,我会阅读原文网页后作答</li></ul>`);
   // 新闻骨架屏
   masonryEl.innerHTML = Array.from({ length: 3 }, () => `
     <div class="story skeleton-card" aria-hidden="true">
