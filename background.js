@@ -1,4 +1,4 @@
-/* Three.js deep-space meteor and chemistry atmosphere. */
+/* Three.js deep-space water-ripple cursor and chemistry atmosphere. */
 (function initMeteorChemistrySpace() {
   if (!window.THREE) return;
 
@@ -33,7 +33,7 @@
   const clock = new THREE.Clock();
   const palette = [0x62d9ff, 0xa8f4ff, 0xb39aff, 0xf2d58b];
 
-  canvas.dataset.backgroundEffect = "cursor-meteor-trail";
+  canvas.dataset.backgroundEffect = "cursor-water-ripple";
 
   function createStarField() {
     const positions = new Float32Array(SETTINGS.stars * 3);
@@ -287,10 +287,12 @@
   const headTexture = makeHeadTexture();
   const cursorTrails = [];
 
-  function makeMeteorTrailMaterial() {
+  // 水面波纹材质:同心圆环随 uProgress 由内向外扩散,边缘带轻微抖动模拟水面震动
+  function makeRippleMaterial() {
     return new THREE.ShaderMaterial({
       uniforms: {
         uOpacity: { value: 0 },
+        uProgress: { value: 0 },
         uColor: { value: new THREE.Color(0x75ddff) }
       },
       transparent: true,
@@ -307,18 +309,25 @@
       `,
       fragmentShader: `
         uniform float uOpacity;
+        uniform float uProgress;
         uniform vec3 uColor;
         varying vec2 vUv;
 
         void main() {
-          float distanceFromCore = abs(vUv.y - 0.5) * 2.0;
-          float core = 1.0 - smoothstep(0.0, 0.22, distanceFromCore);
-          float halo = 1.0 - smoothstep(0.05, 1.0, distanceFromCore);
-          float tailFade = mix(1.0, 0.68, vUv.x);
-          float softJoin = smoothstep(0.0, 0.08, vUv.x) * smoothstep(0.0, 0.08, 1.0 - vUv.x);
-          vec3 color = mix(uColor, vec3(0.72, 0.50, 1.0), vUv.x * 0.55);
-          float alpha = (core * 1.0 + halo * 0.55) * tailFade * softJoin * uOpacity;
-          gl_FragColor = vec4(color * 2.6, min(1.0, alpha * 1.9));
+          vec2 centered = vUv - 0.5;
+          float angle = atan(centered.y, centered.x);
+          float dist = length(centered) * 2.0;
+          // 波纹边缘的轻微抖动,模拟水面震动感
+          dist += sin(angle * 7.0 + uProgress * 18.0) * 0.018;
+          // 三道由内向外扩散的涟漪
+          float ring1 = 1.0 - smoothstep(0.0, 0.07, abs(dist - uProgress * 0.92));
+          float ring2 = (1.0 - smoothstep(0.0, 0.09, abs(dist - uProgress * 0.62))) * 0.6;
+          float ring3 = (1.0 - smoothstep(0.0, 0.11, abs(dist - uProgress * 0.34))) * 0.35;
+          float rings = ring1 + ring2 + ring3;
+          float edgeFade = 1.0 - smoothstep(0.8, 1.0, dist);
+          vec3 color = mix(uColor, vec3(0.72, 0.55, 1.0), uProgress * 0.4);
+          float alpha = rings * edgeFade * uOpacity;
+          gl_FragColor = vec4(color * 1.9, min(1.0, alpha * 1.6));
         }
       `
     });
@@ -326,7 +335,7 @@
 
   function makeCursorTrail() {
     const group = new THREE.Group();
-    const trailMaterial = makeMeteorTrailMaterial();
+    const trailMaterial = makeRippleMaterial();
     const trail = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), trailMaterial);
     trail.renderOrder = 20;
     group.add(trail);
@@ -334,8 +343,9 @@
     group.userData = {
       active: false,
       age: 0,
-      life: reducedMotion ? 0.4 : 1.15,
+      life: reducedMotion ? 0.5 : 1.3,
       brightness: 1,
+      maxScale: 1,
       trail,
       trailMaterial
     };
@@ -400,28 +410,28 @@
 
     const now = performance.now();
     const movement = hitPoint.distanceTo(lastCursorWorld);
-    if (movement < 0.02 || now - lastTrailAt < 10) return;
+    if (movement < 0.06 || now - lastTrailAt < 45) return;
     lastTrailAt = now;
 
     const group = cursorTrails[cursorTrailIndex];
     cursorTrailIndex = (cursorTrailIndex + 1) % cursorTrails.length;
     const data = group.userData;
-    const tailDirection = lastCursorWorld.clone().sub(hitPoint).normalize();
-    const visualLength = movement + 0.32;
-    const brightness = Math.min(1, 0.85 + movement * 1.8);
+    const brightness = Math.min(1, 0.75 + movement * 1.6);
 
     group.visible = true;
     group.position.copy(hitPoint);
     data.active = true;
     data.age = 0;
     data.brightness = brightness;
-    data.trail.position.copy(tailDirection).multiplyScalar(visualLength * 0.5);
-    data.trail.rotation.z = Math.atan2(tailDirection.y, tailDirection.x);
-    data.trail.scale.set(visualLength, 0.16 + Math.min(movement * 0.18, 0.14), 1);
+    // 移动越快,波纹扩散范围越大
+    data.maxScale = 1.1 + Math.min(movement * 1.4, 1.2);
+    data.trail.scale.setScalar(0.18);
     data.trailMaterial.uniforms.uOpacity.value = brightness;
+    data.trailMaterial.uniforms.uProgress.value = 0;
+
     cursorHead.position.copy(hitPoint);
-    cursorHead.scale.setScalar(0.3 + brightness * 0.16);
-    cursorHeadMaterial.opacity = Math.min(1, brightness * 1.3);
+    cursorHead.scale.setScalar(0.16 + brightness * 0.08);
+    cursorHeadMaterial.opacity = Math.min(1, brightness);
     cursorHead.visible = true;
 
     lastCursorWorld.copy(hitPoint);
@@ -464,11 +474,15 @@
       const data = trailGroup.userData;
       if (!data.active) return;
       data.age += delta;
-      const fade = Math.max(0, 1 - data.age / data.life);
-      const opacity = Math.pow(fade, 1.1) * data.brightness;
-      data.trailMaterial.uniforms.uOpacity.value = opacity;
+      const progress = Math.min(1, data.age / data.life);
+      const fade = 1 - progress;
+      // 扩散先快后慢,模拟水面波纹自然减速
+      const easeOut = 1 - Math.pow(fade, 2.2);
+      data.trail.scale.setScalar(0.18 + (data.maxScale - 0.18) * easeOut);
+      data.trailMaterial.uniforms.uProgress.value = easeOut;
+      data.trailMaterial.uniforms.uOpacity.value = Math.pow(fade, 1.25) * data.brightness;
       activeTrailCount++;
-      if (fade <= 0) {
+      if (progress >= 1) {
         data.active = false;
         trailGroup.visible = false;
       }
