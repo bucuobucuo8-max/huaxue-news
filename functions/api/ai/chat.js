@@ -120,6 +120,81 @@ async function fetchPageText(url) {
   return (viaApi.length >= direct.length ? viaApi : direct).slice(0, 3000);
 }
 
+// ===== 联网检索 =====
+async function fetchJson(url, ms) {
+  const resp = await fetchWithTimeout(url, {
+    headers: { 'Accept': 'application/json', 'User-Agent': 'ChemistryAgent/1.0 (education)' },
+  }, ms);
+  if (!resp.ok) return null;
+  try { return await resp.json(); } catch { return null; }
+}
+
+// 从 PubChem 识别化合物:queryKind 依次尝试,返回识别描述或空串
+async function pubchemIdentify(q, kinds) {
+  for (const kind of kinds) {
+    try {
+      const json = await fetchJson(
+        `https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/${kind}/${encodeURIComponent(q)}/property/IUPACName,MolecularFormula,MolecularWeight,SMILES/JSON`,
+        5000
+      );
+      const p = json?.PropertyTable?.Properties?.[0];
+      if (p) {
+        return `用户给出的「${q}」经 PubChem 识别为:${p.IUPACName}(分子式 ${p.MolecularFormula},分子量 ${p.MolecularWeight} g/mol,SMILES ${p.SMILES || p.IsomericSMILES || ''},CID ${p.CID})。`;
+      }
+    } catch {}
+  }
+  return '';
+}
+
+// 识别用户输入中的结构式/分子式/SMILES(整句或句中 token)
+async function identifyStructure(message) {
+  const q = message.trim();
+  const charset = /^[A-Za-z0-9@+\-\[\]()=#$\\/.%]+$/;
+  const tryToken = async (token) => {
+    if (token.length < 2 || token.length > 80) return '';
+    if (/^([A-Z][a-z]?\d*)+$/.test(token)) return pubchemIdentify(token, ['fastformula', 'name', 'smiles']);
+    if (/[()=#\[\]@\\]/.test(token)) return pubchemIdentify(token, ['smiles', 'name', 'fastformula']);
+    if (/\d/.test(token) && /[A-Za-z]/.test(token)) return pubchemIdentify(token, ['smiles', 'fastformula', 'name']);
+    return '';
+  };
+  // 整句就是结构式(无空格、无中文)
+  if (!/\s/.test(q) && charset.test(q)) {
+    const hit = await tryToken(q);
+    if (hit) return hit;
+  }
+  // 句中含结构式 token(如"这个 CH3COOH 是什么")
+  const tokens = q.match(/[A-Za-z0-9@+\-\[\]()=#$\\/.%]{3,80}/g) || [];
+  for (const t of tokens) {
+    if (!/\d/.test(t) && !/[()=#\[\]@\\]/.test(t)) continue; // 必须含数字或 SMILES 特征字符
+    const hit = await tryToken(t);
+    if (hit) return hit;
+  }
+  return '';
+}
+
+// Wikipedia 摘要检索(先中文后英文),返回摘要或空串
+async function searchWikipedia(query) {
+  const q = query.slice(0, 60);
+  for (const lang of ['zh', 'en']) {
+    try {
+      const s = await fetchJson(`https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&format=json&srlimit=1`, 4000);
+      const title = s?.query?.search?.[0]?.title;
+      if (!title) continue;
+      const e = await fetchJson(`https://${lang}.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&redirects=1&format=json&titles=${encodeURIComponent(title)}`, 4000);
+      const pages = e?.query?.pages || {};
+      const page = Object.values(pages)[0];
+      let extract = (page?.extract || '').trim().slice(0, 700);
+      // action API 无摘要时,回退 REST summary 接口
+      if (!extract) {
+        const r = await fetchJson(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`, 4000);
+        extract = (r?.extract || '').trim().slice(0, 700);
+      }
+      if (extract) return `Wikipedia(${lang === 'zh' ? '中文' : '英文'})「${page?.title || title}」摘要:${extract}`;
+    } catch {}
+  }
+  return '';
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
@@ -167,6 +242,13 @@ export async function onRequestPost(context) {
       }).join('\n\n');
     }
 
+    // 联网检索:结构识别(PubChem)+ Wikipedia 摘要,并行执行,失败不影响主流程
+    const [structureInfo, wikiInfo] = await Promise.all([
+      identifyStructure(message),
+      searchWikipedia(message),
+    ]);
+    const webContext = [structureInfo, wikiInfo].filter(Boolean).join('\n');
+
     const systemPrompt =
       '你是「化学智能体」,一位面向化学专业学生与研究员的 AI 助手,运行在一个化学新闻简讯网站上。' +
       '请用简体中文回答,风格:专业但通俗,适当使用 emoji,化学式/代号/人名保留原文。' +
@@ -181,7 +263,11 @@ export async function onRequestPost(context) {
       (attachSection
         ? '\n8) 用户附加了文献,请优先依据文献网页内容回答,并在回答开头注明依据的是哪篇文献(如「根据《标题》…」);若网页内容抓取失败,基于标题与摘要回答并说明;此时推荐追问应围绕附加文献。'
         : '') +
+      (webContext
+        ? '\n9) 下方附有联网检索结果,请优先依据它回答并自然注明来源(如"据 Wikipedia");若包含 PubChem 结构识别结果,说明该物质是什么、有何用途,并在回复末尾输出对应的 [MOL] 标记(使用识别结果中的 SMILES 或英文名)以便前端渲染结构图。'
+        : '') +
       (newsDigest ? `\n\n今日化学新闻清单:\n${newsDigest}` : '') +
+      (webContext ? `\n\n联网检索结果:\n${webContext}` : '') +
       (attachSection ? `\n\n用户附加的文献:\n${attachSection}` : '');
 
     const messages = [
