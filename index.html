@@ -17,9 +17,9 @@
         <h1>化学新闻快讯</h1>
         <p>面向化学专业学生、化工与材料研究员的每日精简资讯。瀑布流排列,优先识别值得点开的重要事件。</p>
       </div>
-      <div class="hero-stats" id="heroStats">
-        <!-- JS动态填充:今日统计可视化 -->
-      </div>
+    </div>
+    <div class="stats-bar" id="heroStats">
+      <!-- JS动态填充:一行式今日统计 -->
     </div>
     <nav class="filters" aria-label="新闻分类筛选">
       <button class="filter-btn active" data-filter="all">全部</button>
@@ -29,20 +29,55 @@
       <button class="filter-btn" data-filter="research">研究</button>
       <button class="filter-btn" data-filter="favorites" id="favBtn">★ 收藏夹</button>
     </nav>
+    <div class="search-row" aria-label="AI 语义搜索">
+      <input type="text" id="aiSearchInput" placeholder="AI 语义搜索:如「固态电池相关研究」「最近有什么获奖新闻」" autocomplete="off">
+      <button class="search-btn" id="aiSearchBtn">搜索</button>
+      <button class="search-clear-btn" id="aiSearchClear" style="display:none;">清除</button>
+    </div>
   </header>
 
-  <!-- 排行榜区域 -->
-  <section class="ranking-section" id="rankingSection" aria-label="收藏排行榜">
-    <div class="ranking-header">
-      <h3>🔥 收藏排行榜</h3>
-      <span class="ranking-hint">← 滑动查看 Top 10 →</span>
-    </div>
-    <div class="ranking-carousel" id="rankingCarousel">
-      <div class="ranking-loading">加载中...</div>
-    </div>
-  </section>
+  <!-- 主从布局:左侧新闻流,右侧边栏(排行榜 + AI 助手) -->
+  <div class="content-layout">
+    <section class="news-grid" id="masonry" aria-label="化学新闻"></section>
 
-  <section class="news-grid" id="masonry" aria-label="化学新闻"></section>
+    <aside class="sidebar">
+      <!-- 排行榜区域 -->
+      <section class="ranking-section" id="rankingSection" aria-label="收藏排行榜">
+        <div class="ranking-header">
+          <h3>🔥 收藏排行榜</h3>
+          <span class="ranking-hint">Top 10 · 自动轮播</span>
+        </div>
+        <div class="ranking-carousel" id="rankingCarousel">
+          <div class="ranking-loading">加载中...</div>
+        </div>
+      </section>
+
+      <!-- AI 智能助手区域(Tab 切换) -->
+      <section class="ai-section" id="aiSection" aria-label="AI 智能助手">
+        <div class="ai-header">
+          <h3>🤖 AI 智能助手</h3>
+        </div>
+        <div class="ai-tabs" role="tablist">
+          <button class="ai-tab active" data-tab="brief" role="tab">📰 今日早报</button>
+          <button class="ai-tab" data-tab="tags" role="tab">🏷️ 热点标签</button>
+          <button class="ai-tab" data-tab="recommend" role="tab">✨ 收藏推荐</button>
+        </div>
+        <div class="ai-panel" id="aiPanelBrief">
+          <button class="ai-gen-btn" id="aiBriefBtn">📰 生成今日早报</button>
+          <div class="ai-brief-box" id="aiBriefBox" style="display:none;"></div>
+        </div>
+        <div class="ai-panel" id="aiPanelTags" hidden>
+          <button class="ai-gen-btn" id="aiTagsBtn">🏷️ 提取热点标签</button>
+          <div class="ai-tag-cloud" id="aiTagCloud" style="display:none;"></div>
+        </div>
+        <div class="ai-panel" id="aiPanelRecommend" hidden>
+          <div class="ai-desc" id="aiDesc">点击按钮,DeepSeek 将根据你的收藏偏好,从当前新闻中智能挑选最相关的内容。</div>
+          <button class="ai-gen-btn" id="aiGenBtn">根据我的收藏生成推荐</button>
+          <div class="ai-grid" id="aiGrid"></div>
+        </div>
+      </section>
+    </aside>
+  </div>
   <div class="empty" id="emptyState">当前分类暂无新闻。</div>
   <div class="empty" id="favEmptyState" style="display:none;">收藏夹为空,点击新闻卡片右上角的 ♡ 收藏你喜欢的新闻。</div>
 </main>

@@ -27,7 +27,7 @@ export async function onRequestGet(context) {
     const baseUrl = new URL(context.request.url);
     const origin = baseUrl.origin;
 
-    // 先尝试获取实时数据
+    // 仅使用实时 API 数据(聚合 GDELT/Crossref/OpenAlex/PubMed),不再回退本地
     let newsData = [];
     let categories = { award: '奖项', product: '产品', company: '公司', research: '研究' };
     let source = 'live-json-api';
@@ -44,24 +44,7 @@ export async function onRequestGet(context) {
         }
       }
     } catch (e) {
-      source = 'local';
-    }
-
-    // 实时数据为空时回退本地
-    if (newsData.length === 0) {
-      try {
-        const localResp = await fetch(origin + '/api/news.json');
-        if (localResp.ok) {
-          const localJson = await localResp.json();
-          if (localJson.code === 200 && localJson.data && localJson.data.news) {
-            newsData = localJson.data.news;
-            categories = localJson.data.categories || categories;
-            source = 'local';
-          }
-        }
-      } catch (e) {
-        source = 'empty';
-      }
+      source = 'error';
     }
 
     // 解析查询参数

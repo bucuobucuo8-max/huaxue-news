@@ -66,22 +66,28 @@ function isImportant(title, desc) {
   return /breakthrough|milestone|nobel|first|critical|discovery|unprecedent|record|defy|crack|stumped|突破|首次|重大|里程碑/.test(text);
 }
 
+// 时间格式:北京时间(UTC+8)的 YYYY-MM-DD HH:MM
 function formatTime(dateStr, fallbackIndex) {
+  const pad = n => String(n).padStart(2, '0');
+  const fmt = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  const TZ = 8 * 3600 * 1000; // 北京时间偏移
+
   if (dateStr) {
     const d = new Date(dateStr);
     if (!isNaN(d.getTime())) {
-      const h = d.getUTCHours();
-      const m = d.getUTCMinutes();
-      if (h !== 0 || m !== 0) {
-        return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+      const bj = new Date(d.getTime() + TZ);
+      // 若原数据只有日期(时间为00:00),时间部分用当前时间递减代替
+      if (d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0) {
+        return fmt(bj);
       }
+      const bjDate = `${bj.getUTCFullYear()}-${pad(bj.getUTCMonth() + 1)}-${pad(bj.getUTCDate())}`;
+      const fallback = new Date(Date.now() + TZ - fallbackIndex * 12 * 60000);
+      return `${bjDate} ${pad(fallback.getUTCHours())}:${pad(fallback.getUTCMinutes())}`;
     }
   }
-  const now = new Date();
-  let h = now.getUTCHours();
-  let m = now.getUTCMinutes() - fallbackIndex * 12;
-  while (m < 0) { m += 60; h = (h - 1 + 24) % 24; }
-  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+  // 无日期:用当前北京时间递减生成
+  const fallback = new Date(Date.now() + TZ - fallbackIndex * 12 * 60000);
+  return fmt(fallback);
 }
 
 // 验证URL是否有效
@@ -125,37 +131,38 @@ async function fetchGDELT() {
     { q: '"chemistry" OR "chemical" OR "petrochemical"', source: 'GDELT' },
     { q: '"chemical plant" OR "chemical industry" OR "new material"', source: 'GDELT Industry' },
   ];
-  const results = [];
-  for (const query of queries) {
-    try {
-      const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query.q)}&mode=artlist&maxrecords=10&format=json&sort=date&timespan=1week`;
-      const resp = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
-        cf: { cacheTtl: 300 },
-      });
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      if (data.articles) {
-        data.articles.forEach((art, i) => {
-          const title = cleanHtml(art.title);
-          const url = art.url || '';
-          if (!isValidArticle(title, url)) return;
-          if (!isChemistryRelated(title, art.domain || '', '')) return;
-          results.push({
-            time: formatTime(art.seendate ? `${art.seendate.substring(0,4)}-${art.seendate.substring(4,6)}-${art.seendate.substring(6,8)}T${art.seendate.substring(8,10)}:${art.seendate.substring(10,12)}:${art.seendate.substring(12,14)}Z` : null, i),
-            type: classifyNews(title, art.domain || ''),
-            title,
-            summary: `${art.domain || 'Chemistry News'} - ${art.sourcecountry || 'Global'}`,
-            source: query.source,
-            url,
-            important: isImportant(title, art.domain || ''),
-            image: art.socialimage || '',
-          });
+  // 两个查询并行,各 8 秒超时兜底
+  const settled = await Promise.allSettled(queries.map(async (query) => {
+    const list = [];
+    const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=${encodeURIComponent(query.q)}&mode=artlist&maxrecords=10&format=json&sort=date&timespan=1week`;
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
+      cf: { cacheTtl: 300 },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return list;
+    const data = await resp.json();
+    if (data.articles) {
+      data.articles.forEach((art, i) => {
+        const title = cleanHtml(art.title);
+        const url = art.url || '';
+        if (!isValidArticle(title, url)) return;
+        if (!isChemistryRelated(title, art.domain || '', '')) return;
+        list.push({
+          time: formatTime(art.seendate ? `${art.seendate.substring(0,4)}-${art.seendate.substring(4,6)}-${art.seendate.substring(6,8)}T${art.seendate.substring(8,10)}:${art.seendate.substring(10,12)}:${art.seendate.substring(12,14)}Z` : null, i),
+          type: classifyNews(title, art.domain || ''),
+          title,
+          summary: `${art.domain || 'Chemistry News'} - ${art.sourcecountry || 'Global'}`,
+          source: query.source,
+          url,
+          important: isImportant(title, art.domain || ''),
+          image: art.socialimage || '',
         });
-      }
-    } catch (e) { /* 忽略 */ }
-  }
-  return results;
+      });
+    }
+    return list;
+  }));
+  return settled.flatMap(r => r.status === 'fulfilled' ? r.value : []);
 }
 
 // =========================
@@ -177,41 +184,49 @@ async function fetchCrossref() {
     '0003-2700', // Analytical Chemistry
   ];
   const results = [];
-  // 随机选3个期刊查询,避免请求过多
+  // 随机选4个期刊,并行查询,各 8 秒超时兜底
   const selectedISSNs = chemistryISSNs.sort(() => Math.random() - 0.5).slice(0, 4);
-  for (const issn of selectedISSNs) {
-    try {
-      const url = `https://api.crossref.org/journals/${issn}/works?filter=type:journal-article&rows=3&sort=published&order=desc&mailto=info@huaxue-news.pages.dev`;
-      const resp = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
-        cf: { cacheTtl: 300 },
+  const settled = await Promise.allSettled(selectedISSNs.map(async (issn) => {
+    const list = [];
+    const url = `https://api.crossref.org/journals/${issn}/works?filter=type:journal-article&rows=3&sort=published&order=desc&mailto=info@huaxue-news.pages.dev`;
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
+      cf: { cacheTtl: 300 },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return list;
+    const data = await resp.json();
+    const items = data.message?.items || [];
+    for (const item of items) {
+      const title = cleanHtml(item.title?.[0] || '');
+      const doi = item.DOI || '';
+      const url = doi ? `https://doi.org/${doi}` : '';
+      if (!isValidArticle(title, url)) continue;
+      const abstract = cleanHtml(item.abstract || '').substring(0, 200);
+      const journal = item['container-title']?.[0] || 'Chemistry Journal';
+      if (!isChemistryRelated(title, abstract, journal)) continue;
+      const dateParts = item.published?.['date-parts']?.[0];
+      const dateStr = dateParts ? `${dateParts[0]}-${String(dateParts[1]||1).padStart(2,'0')}-${String(dateParts[2]||1).padStart(2,'0')}` : null;
+      list.push({
+        time: formatTime(dateStr, list.length + 10),
+        type: classifyNews(title, abstract),
+        title,
+        summary: abstract || journal,
+        source: journal,
+        url,
+        important: isImportant(title, abstract),
       });
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      const items = data.message?.items || [];
-      for (const item of items) {
-        const title = cleanHtml(item.title?.[0] || '');
-        const doi = item.DOI || '';
-        const url = doi ? `https://doi.org/${doi}` : '';
-        if (!isValidArticle(title, url)) continue;
-        const abstract = cleanHtml(item.abstract || '').substring(0, 200);
-        const journal = item['container-title']?.[0] || 'Chemistry Journal';
-        if (!isChemistryRelated(title, abstract, journal)) continue;
-        const dateParts = item.published?.['date-parts']?.[0];
-        const dateStr = dateParts ? `${dateParts[0]}-${String(dateParts[1]||1).padStart(2,'0')}-${String(dateParts[2]||1).padStart(2,'0')}` : null;
-        results.push({
-          time: formatTime(dateStr, results.length + 10),
-          type: classifyNews(title, abstract),
-          title,
-          summary: abstract || journal,
-          source: journal,
-          url,
-          important: isImportant(title, abstract),
-        });
+    }
+    return list;
+  }));
+  for (const r of settled) {
+    if (r.status === 'fulfilled') {
+      for (const n of r.value) {
+        results.push(n);
         if (results.length >= 8) break;
       }
-      if (results.length >= 8) break;
-    } catch (e) { /* 忽略 */ }
+    }
+    if (results.length >= 8) break;
   }
   return results;
 }
@@ -226,6 +241,7 @@ async function fetchOpenAlex() {
     const resp = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
       cf: { cacheTtl: 300 },
+      signal: AbortSignal.timeout(8000),
     });
     if (!resp.ok) return [];
     const data = await resp.json();
@@ -271,6 +287,7 @@ async function fetchPubMed() {
     const searchResp = await fetch(searchUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
       cf: { cacheTtl: 300 },
+      signal: AbortSignal.timeout(8000),
     });
     if (!searchResp.ok) return [];
     const searchData = await searchResp.json();
@@ -281,6 +298,7 @@ async function fetchPubMed() {
     const summaryResp = await fetch(summaryUrl, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
       cf: { cacheTtl: 300 },
+      signal: AbortSignal.timeout(8000),
     });
     if (!summaryResp.ok) return [];
     const summaryData = await summaryResp.json();
@@ -317,6 +335,14 @@ export async function onRequestGet(context) {
     return new Response(null, { headers: CORS_HEADERS });
   }
 
+  // 整包缓存:15分钟内直接返回缓存结果,避免每次都等 4 个外部 API
+  const cache = caches.default;
+  const cacheKey = new Request(new URL(context.request.url).origin + '/api/external');
+  try {
+    const cached = await cache.match(cacheKey);
+    if (cached) return cached;
+  } catch (e) { /* 缓存不可用时继续走实时抓取 */ }
+
   try {
     const [gdeltNews, crossrefNews, openalexNews, pubmedNews] = await Promise.all([
       fetchGDELT(),
@@ -348,11 +374,12 @@ export async function onRequestGet(context) {
     if (withImage) {
       bannerImage = withImage.image;
     } else if (allNews.length > 0 && allNews[0].url) {
-      // 从第一条新闻页面抓取 og:image
+      // 从第一条新闻页面抓取 og:image(4秒超时,避免拖慢整体响应)
       try {
         const artResp = await fetch(allNews[0].url, {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
           cf: { cacheTtl: 3600 },
+          signal: AbortSignal.timeout(4000),
         });
         if (artResp.ok) {
           const html = await artResp.text();
@@ -362,7 +389,7 @@ export async function onRequestGet(context) {
       } catch (e) { /* 忽略 */ }
     }
 
-    return new Response(JSON.stringify({
+    const response = new Response(JSON.stringify({
       code: 200,
       message: allNews.length > 0 ? 'success' : 'no live data available',
       source: 'live-json-api',
@@ -374,7 +401,19 @@ export async function onRequestGet(context) {
         categories: { award: '奖项', product: '产品', company: '公司', research: '研究' },
         news: allNews,
       },
-    }), { headers: CORS_HEADERS });
+    }), {
+      headers: {
+        ...CORS_HEADERS,
+        'Cache-Control': 'public, max-age=900', // 15分钟
+      },
+    });
+
+    // 写入整包缓存,后续请求直接命中,不阻塞本次返回
+    try {
+      context.waitUntil(cache.put(cacheKey, response.clone()));
+    } catch (e) { /* 忽略 */ }
+
+    return response;
   } catch (e) {
     return new Response(JSON.stringify({
       code: 500,

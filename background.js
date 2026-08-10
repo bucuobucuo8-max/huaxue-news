@@ -1,662 +1,510 @@
-/* =========================
-   Three.js 深空网格涟漪背景
-   可调变量集中在这里：幅度、速度、密度、亮度
-   ========================= */
-(function initTechBackground() {
+/* Three.js deep-space meteor and chemistry atmosphere. */
+(function initMeteorChemistrySpace() {
   if (!window.THREE) return;
 
-  const BG = {
-    gridSize: 150,          // 网格平面尺寸
-    gridSegments: 96,       // 顶点细分；过高会影响性能
-    gridDensity: 0.16,      // 片元网格密度
-    lineWidth: 0.035,       // 网格线宽
-    baseBrightness: 0.55,   // 基础发光亮度
-    sweepSpeed: 10.0,       // 流光扫过速度
-    sweepWidth: 0.075,      // 流光宽度
-    rippleAmp: 0.42,        // 涟漪顶点位移幅度
-    rippleSpeed: 5.2,       // 涟漪扩散速度
-    rippleFrequency: 0.46,  // 涟漪空间频率
-    rippleFade: 0.9,        // 涟漪时间衰减
-    rippleSharpness: 0.48,  // 涟漪光环锐度；越大越窄
-    maxRipples: 8           // 同屏最大涟漪数量
+  const canvas = document.getElementById("bg-canvas");
+  if (!canvas) return;
+
+  const compact = window.matchMedia("(max-width: 760px)").matches;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const SETTINGS = {
+    stars: compact ? 280 : 620,
+    chemicalObjects: compact ? 13 : 24,
+    trailSegments: compact ? 24 : 40
   };
 
-  const canvas = document.getElementById("bg-canvas");
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    alpha: true,
+    antialias: !compact,
+    powerPreference: "high-performance"
+  });
+  renderer.setClearColor(0x000000, 0);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, compact ? 1.25 : 1.65));
+  renderer.outputEncoding = THREE.sRGBEncoding;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 500);
-  camera.position.set(0, 24, 34);
-  camera.lookAt(0, 0, 0);
+  scene.fog = new THREE.FogExp2(0x020611, 0.018);
 
-  const uniforms = {
-    uTime: { value: 0 },
-    uGridDensity: { value: BG.gridDensity },
-    uLineWidth: { value: BG.lineWidth },
-    uBaseBrightness: { value: BG.baseBrightness },
-    uSweepSpeed: { value: BG.sweepSpeed },
-    uSweepWidth: { value: BG.sweepWidth },
-    uRippleAmp: { value: BG.rippleAmp },
-    uRippleSpeed: { value: BG.rippleSpeed },
-    uRippleFrequency: { value: BG.rippleFrequency },
-    uRippleFade: { value: BG.rippleFade },
-    uRippleSharpness: { value: BG.rippleSharpness },
-    uRipples: { value: Array.from({ length: BG.maxRipples }, () => new THREE.Vector4(0, 0, -999, 0)) }
-  };
-
-  const material = new THREE.ShaderMaterial({
-    uniforms,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    vertexShader: `
-      uniform float uTime;
-      uniform float uRippleAmp;
-      uniform float uRippleSpeed;
-      uniform float uRippleFrequency;
-      uniform float uRippleFade;
-      uniform vec4 uRipples[${BG.maxRipples}];
-      varying vec3 vWorld;
-      varying float vRipple;
-
-      void main() {
-        vec3 p = position;
-        float lift = 0.0;
-        float glow = 0.0;
-        for (int i = 0; i < ${BG.maxRipples}; i++) {
-          vec4 r = uRipples[i];
-          float age = uTime - r.z;
-          if (age > 0.0) {
-            float d = distance(p.xy, r.xy);
-            float radius = age * uRippleSpeed;
-            float envelope = exp(-age * uRippleFade) * r.w;
-            lift += sin(d * uRippleFrequency - age * 7.0) * envelope * uRippleAmp;
-            glow += exp(-abs(d - radius) * 2.4) * envelope;
-          }
-        }
-        p.z += lift;
-        vec4 world = modelMatrix * vec4(p, 1.0);
-        vWorld = world.xyz;
-        vRipple = glow;
-        gl_Position = projectionMatrix * viewMatrix * world;
-      }
-    `,
-    fragmentShader: `
-      precision highp float;
-      uniform float uTime;
-      uniform float uGridDensity;
-      uniform float uLineWidth;
-      uniform float uBaseBrightness;
-      uniform float uSweepSpeed;
-      uniform float uSweepWidth;
-      uniform float uRippleSpeed;
-      uniform float uRippleFade;
-      uniform float uRippleSharpness;
-      uniform vec4 uRipples[${BG.maxRipples}];
-      varying vec3 vWorld;
-      varying float vRipple;
-
-      float gridLine(vec2 uv, float width) {
-        vec2 g = abs(fract(uv) - 0.5);
-        float d = min(g.x, g.y);
-        return 1.0 - smoothstep(0.0, width, d);
-      }
-
-      void main() {
-        vec2 coord = vWorld.xz * uGridDensity;
-        float fine = gridLine(coord, uLineWidth);
-        float major = gridLine(coord * 0.2, uLineWidth * 1.7);
-
-        float sweepX = mod(uTime * uSweepSpeed, 170.0) - 85.0;
-        float sweep = exp(-abs(vWorld.x - sweepX) * uSweepWidth);
-
-        float rippleGlow = 0.0;
-        for (int i = 0; i < ${BG.maxRipples}; i++) {
-          vec4 r = uRipples[i];
-          float age = uTime - r.z;
-          if (age > 0.0) {
-            float d = distance(vWorld.xz, r.xy);
-            float radius = age * uRippleSpeed;
-            float band = exp(-abs(d - radius) * uRippleSharpness);
-            rippleGlow += band * exp(-age * uRippleFade) * r.w;
-          }
-        }
-
-        vec3 deepBlue = vec3(0.05, 0.22, 0.48);
-        vec3 cyan = vec3(0.25, 0.85, 1.00);
-        vec3 violet = vec3(0.55, 0.42, 1.00);
-
-        float lineEnergy = fine * 0.62 + major * 0.55;
-        vec3 color = deepBlue * lineEnergy * uBaseBrightness;
-        color += cyan * lineEnergy * sweep * 0.82;
-        color += cyan * rippleGlow * 0.95;
-        color += violet * major * 0.20;
-        color += cyan * vRipple * 0.35;
-
-        float alpha = clamp(lineEnergy * 0.72 + sweep * 0.18 + rippleGlow * 0.55, 0.0, 0.9);
-        float fade = 1.0 - smoothstep(42.0, 86.0, length(vWorld.xz));
-        gl_FragColor = vec4(color, alpha * fade);
-      }
-    `
-  });
-
-  const geometry = new THREE.PlaneGeometry(BG.gridSize, BG.gridSize, BG.gridSegments, BG.gridSegments);
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.rotation.x = -Math.PI / 2;
-  scene.add(mesh);
-
-  /* ===== 化学元素装饰：分子结构 + 化学式文字 ===== */
-  const chemGroup = new THREE.Group();
-  scene.add(chemGroup);
-
-  // 创建文本精灵（化学式）
-  function makeTextSprite(text, color = '#7dd3fc') {
-    const cv = document.createElement('canvas');
-    cv.width = 256; cv.height = 128;
-    const cx = cv.getContext('2d');
-    cx.font = 'bold 64px "Segoe UI", sans-serif';
-    cx.textAlign = 'center';
-    cx.textBaseline = 'middle';
-    cx.shadowColor = color;
-    cx.shadowBlur = 18;
-    cx.fillStyle = color;
-    cx.fillText(text, 128, 64);
-    const tex = new THREE.CanvasTexture(cv);
-    tex.needsUpdate = true;
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false });
-    const sp = new THREE.Sprite(mat);
-    sp.scale.set(6, 3, 1);
-    return sp;
-  }
-
-  // 创建苯环（6 个碳原子 + 连接键）
-  function makeBenzeneRing(scale = 1) {
-    const g = new THREE.Group();
-    const radius = 2.0 * scale;
-    const atomGeo = new THREE.SphereGeometry(0.28 * scale, 16, 12);
-    const atomMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
-    const bondGeo = new THREE.CylinderGeometry(0.06 * scale, 0.06 * scale, 1, 8);
-    const bondMat = new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending });
-
-    const positions = [];
-    for (let i = 0; i < 6; i++) {
-      const ang = (i / 6) * Math.PI * 2;
-      const x = Math.cos(ang) * radius;
-      const z = Math.sin(ang) * radius;
-      positions.push(new THREE.Vector3(x, 0, z));
-      const atom = new THREE.Mesh(atomGeo, atomMat);
-      atom.position.set(x, 0, z);
-      g.add(atom);
-    }
-    // 连接键
-    for (let i = 0; i < 6; i++) {
-      const a = positions[i];
-      const b = positions[(i + 1) % 6];
-      const mid = a.clone().add(b).multiplyScalar(0.5);
-      const len = a.distanceTo(b);
-      const bond = new THREE.Mesh(bondGeo, bondMat);
-      bond.scale.y = len;
-      bond.position.copy(mid);
-      bond.lookAt(b);
-      bond.rotateX(Math.PI / 2);
-      g.add(bond);
-    }
-    return g;
-  }
-
-  // 创建水分子 H₂O（一个氧 + 两个氢）
-  function makeWaterMolecule(scale = 1) {
-    const g = new THREE.Group();
-    const oGeo = new THREE.SphereGeometry(0.45 * scale, 20, 16);
-    const oMat = new THREE.MeshBasicMaterial({ color: 0xfb7185, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending });
-    const hGeo = new THREE.SphereGeometry(0.22 * scale, 16, 12);
-    const hMat = new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
-    const bondGeo = new THREE.CylinderGeometry(0.05 * scale, 0.05 * scale, 1, 8);
-    const bondMat = new THREE.MeshBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending });
-
-    const o = new THREE.Mesh(oGeo, oMat); g.add(o);
-    const h1 = new THREE.Mesh(hGeo, hMat); h1.position.set(0.9 * scale, 0.6 * scale, 0); g.add(h1);
-    const h2 = new THREE.Mesh(hGeo, hMat); h2.position.set(-0.9 * scale, 0.6 * scale, 0); g.add(h2);
-
-    const b1 = new THREE.Mesh(bondGeo, bondMat);
-    b1.position.set(0.45 * scale, 0.3 * scale, 0);
-    b1.scale.y = 1.0 * scale; b1.rotation.z = -Math.PI / 4; g.add(b1);
-    const b2 = new THREE.Mesh(bondGeo, bondMat);
-    b2.position.set(-0.45 * scale, 0.3 * scale, 0);
-    b2.scale.y = 1.0 * scale; b2.rotation.z = Math.PI / 4; g.add(b2);
-    return g;
-  }
-
-  // 创建甲烷 CH₄（中心碳 + 四面体氢）
-  function makeMethaneMolecule(scale = 1) {
-    const g = new THREE.Group();
-    const cGeo = new THREE.SphereGeometry(0.42 * scale, 20, 16);
-    const cMat = new THREE.MeshBasicMaterial({ color: 0xa78bfa, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending });
-    const hGeo = new THREE.SphereGeometry(0.2 * scale, 16, 12);
-    const hMat = new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
-    const bondGeo = new THREE.CylinderGeometry(0.045 * scale, 0.045 * scale, 1, 8);
-    const bondMat = new THREE.MeshBasicMaterial({ color: 0xc4b5fd, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending });
-
-    const c = new THREE.Mesh(cGeo, cMat); g.add(c);
-    const dirs = [
-      [1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, -1, -1]
-    ];
-    const hPos = [];
-    dirs.forEach(d => {
-      const x = d[0] * 0.8 * scale, y = d[1] * 0.8 * scale, z = d[2] * 0.8 * scale;
-      hPos.push(new THREE.Vector3(x, y, z));
-      const h = new THREE.Mesh(hGeo, hMat); h.position.set(x, y, z); g.add(h);
-      const b = new THREE.Mesh(bondGeo, bondMat);
-      b.position.set(x / 2, y / 2, z / 2);
-      b.scale.y = 0.8 * scale;
-      b.lookAt(new THREE.Vector3(x, y, z));
-      b.rotateX(Math.PI / 2);
-      g.add(b);
-    });
-    return g;
-  }
-
-  // 化学式文字列表
-  const formulas = ['H₂O', 'C₆H₆', 'CO₂', 'NaCl', 'CH₄', 'NH₃', 'O₂', 'C₂H₆O', 'H₂SO₄', 'CaCO₃'];
-  // 随机分布的化学元素
-  const chemElements = [];
-  const areaR = 42;
-
-  // 生成与已放置元素保持最小间距的位置
-  const placedPositions = [];
-  function spreadPos(yMin, yMax, minDist) {
-    for (let tries = 0; tries < 30; tries++) {
-      const x = (Math.random() - 0.5) * areaR;
-      const y = yMin + Math.random() * (yMax - yMin);
-      const z = (Math.random() - 0.5) * areaR;
-      let ok = true;
-      for (const p of placedPositions) {
-        const dx = x - p.x, dy = y - p.y, dz = z - p.z;
-        if (Math.sqrt(dx*dx + dy*dy + dz*dz) < minDist) { ok = false; break; }
-      }
-      if (ok || tries === 29) {
-        placedPositions.push({ x, y, z });
-        return { x, y, z };
-      }
-    }
-    const fx = (Math.random() - 0.5) * areaR;
-    const fy = yMin + Math.random() * (yMax - yMin);
-    const fz = (Math.random() - 0.5) * areaR;
-    placedPositions.push({ x: fx, y: fy, z: fz });
-    return { x: fx, y: fy, z: fz };
-  }
-
-  // 放置 5 个苯环
-  for (let i = 0; i < 5; i++) {
-    const ring = makeBenzeneRing(0.8 + Math.random() * 0.7);
-    const pos = spreadPos(8, 22, 7);
-    ring.position.set(pos.x, pos.y, pos.z);
-    ring.rotation.x = Math.random() * Math.PI;
-    ring.rotation.y = Math.random() * Math.PI;
-    ring.userData = {
-      floatSpeed: 0.3 + Math.random() * 0.3,
-      floatPhase: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.4,
-      baseY: ring.position.y
-    };
-    chemGroup.add(ring);
-    chemElements.push(ring);
-  }
-
-  // 放置 4 个水分子
-  for (let i = 0; i < 4; i++) {
-    const mol = makeWaterMolecule(0.8 + Math.random() * 0.5);
-    const pos = spreadPos(6, 22, 7);
-    mol.position.set(pos.x, pos.y, pos.z);
-    mol.rotation.x = Math.random() * Math.PI;
-    mol.userData = {
-      floatSpeed: 0.2 + Math.random() * 0.35,
-      floatPhase: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.3,
-      baseY: mol.position.y
-    };
-    chemGroup.add(mol);
-    chemElements.push(mol);
-  }
-
-  // 放置 3 个甲烷分子
-  for (let i = 0; i < 3; i++) {
-    const mol = makeMethaneMolecule(0.7 + Math.random() * 0.4);
-    const pos = spreadPos(7, 21, 7);
-    mol.position.set(pos.x, pos.y, pos.z);
-    mol.userData = {
-      floatSpeed: 0.25 + Math.random() * 0.3,
-      floatPhase: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.5,
-      baseY: mol.position.y
-    };
-    chemGroup.add(mol);
-    chemElements.push(mol);
-  }
-
-  // 放置化学式文字精灵
-  formulas.forEach((f, i) => {
-    const sp = makeTextSprite(f, ['#67e8f9', '#a78bfa', '#7dd3fc', '#fbbf24'][i % 4]);
-    const pos = spreadPos(5, 23, 6);
-    sp.position.set(pos.x, pos.y, pos.z);
-    sp.userData = {
-      floatSpeed: 0.15 + Math.random() * 0.2,
-      floatPhase: Math.random() * Math.PI * 2,
-      baseY: sp.position.y,
-      rippleAffected: true
-    };
-    chemGroup.add(sp);
-    chemElements.push(sp);
-  });
-
-  /* ===== 新增化学元素：DNA 双螺旋、CO₂、NaCl 晶格、电子轨道原子 ===== */
-
-  // 创建 DNA 双螺旋
-  function makeDNAHelix(scale = 1) {
-    const g = new THREE.Group();
-    const turns = 2.5;
-    const segments = 24;
-    const h = 5 * scale;
-    const r = 1.2 * scale;
-    const sGeo = new THREE.SphereGeometry(0.14 * scale, 12, 8);
-    const sMatA = new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
-    const sMatB = new THREE.MeshBasicMaterial({ color: 0xa78bfa, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
-    const sMatT = new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending });
-    const bGeo = new THREE.CylinderGeometry(0.03 * scale, 0.03 * scale, 1, 6);
-    const bMat = new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending });
-
-    for (let i = 0; i <= segments; i++) {
-      const t = i / segments;
-      const ang = t * turns * Math.PI * 2;
-      const y = (t - 0.5) * h;
-      const x1 = Math.cos(ang) * r, z1 = Math.sin(ang) * r;
-      const x2 = Math.cos(ang + Math.PI) * r, z2 = Math.sin(ang + Math.PI) * r;
-
-      const a = new THREE.Mesh(sGeo, sMatA); a.position.set(x1, y, z1); g.add(a);
-      const b = new THREE.Mesh(sGeo, sMatB); b.position.set(x2, y, z2); g.add(b);
-
-      if (i % 2 === 0) {
-        const rung = new THREE.Mesh(bGeo, sMatT);
-        const mid = new THREE.Vector3((x1+x2)/2, y, (z1+z2)/2);
-        rung.position.copy(mid);
-        rung.scale.y = r * 2;
-        rung.lookAt(new THREE.Vector3(x2, y, z2));
-        rung.rotateX(Math.PI / 2);
-        g.add(rung);
-      }
-    }
-    return g;
-  }
-
-  // 创建 CO₂ 分子（线性 O=C=O）
-  function makeCO2Molecule(scale = 1) {
-    const g = new THREE.Group();
-    const cGeo = new THREE.SphereGeometry(0.4 * scale, 20, 16);
-    const cMat = new THREE.MeshBasicMaterial({ color: 0xa78bfa, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending });
-    const oGeo = new THREE.SphereGeometry(0.35 * scale, 20, 16);
-    const oMat = new THREE.MeshBasicMaterial({ color: 0xfb7185, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending });
-    const bGeo = new THREE.CylinderGeometry(0.05 * scale, 0.05 * scale, 1, 8);
-    const bMat = new THREE.MeshBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending });
-
-    const c = new THREE.Mesh(cGeo, cMat); g.add(c);
-    const o1 = new THREE.Mesh(oGeo, oMat); o1.position.x = 1.5 * scale; g.add(o1);
-    const o2 = new THREE.Mesh(oGeo, oMat); o2.position.x = -1.5 * scale; g.add(o2);
-    const b1 = new THREE.Mesh(bGeo, bMat); b1.position.x = 0.75 * scale; b1.scale.y = 1.5 * scale; b1.rotation.z = Math.PI / 2; g.add(b1);
-    const b2 = new THREE.Mesh(bGeo, bMat); b2.position.x = -0.75 * scale; b2.scale.y = 1.5 * scale; b2.rotation.z = Math.PI / 2; g.add(b2);
-    return g;
-  }
-
-  // 创建 NaCl 晶格片段（立方体阵列）
-  function makeNaClLattice(scale = 1) {
-    const g = new THREE.Group();
-    const naGeo = new THREE.SphereGeometry(0.3 * scale, 16, 12);
-    const naMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
-    const clGeo = new THREE.SphereGeometry(0.34 * scale, 16, 12);
-    const clMat = new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
-    const bGeo = new THREE.CylinderGeometry(0.03 * scale, 0.03 * scale, 1, 6);
-    const bMat = new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending });
-
-    const spacing = 1.0 * scale;
-    const n = 2;
-    for (let x = -n; x <= n; x += 2) {
-      for (let y = -n; y <= n; y += 2) {
-        for (let z = -n; z <= n; z += 2) {
-          const isNa = ((x + y + z) / 2) % 2 === 0;
-          const atom = new THREE.Mesh(isNa ? naGeo : clGeo, isNa ? naMat : clMat);
-          atom.position.set(x * spacing * 0.5, y * spacing * 0.5, z * spacing * 0.5);
-          g.add(atom);
-        }
-      }
-    }
-    return g;
-  }
-
-  // 创建带电子轨道的单个原子
-  function makeAtomWithOrbit(scale = 1) {
-    const g = new THREE.Group();
-    const nucGeo = new THREE.SphereGeometry(0.35 * scale, 20, 16);
-    const nucMat = new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending });
-    const nuc = new THREE.Mesh(nucGeo, nucMat); g.add(nuc);
-
-    const eGeo = new THREE.SphereGeometry(0.1 * scale, 10, 8);
-    const eMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending });
-    const ringGeo = new THREE.TorusGeometry(0.8 * scale, 0.015 * scale, 8, 48);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending });
-
-    const orbitTilts = [
-      [0, 0, 0],
-      [Math.PI / 3, 0, Math.PI / 4],
-      [-Math.PI / 3, Math.PI / 3, 0]
-    ];
-    orbitTilts.forEach((tilt, i) => {
-      const ring = new THREE.Mesh(ringGeo, ringMat);
-      ring.rotation.set(tilt[0], tilt[1], tilt[2]);
-      g.add(ring);
-      // 电子
-      const e = new THREE.Mesh(eGeo, eMat);
-      e.userData = { orbitTilt: tilt, orbitSpeed: 1.5 + i * 0.5, orbitPhase: Math.random() * Math.PI * 2, orbitR: 0.8 * scale };
-      g.add(e);
-    });
-    return g;
-  }
-
-  // 放置 3 个 DNA 双螺旋
-  for (let i = 0; i < 3; i++) {
-    const dna = makeDNAHelix(0.9 + Math.random() * 0.4);
-    const pos = spreadPos(9, 21, 8);
-    dna.position.set(pos.x, pos.y, pos.z);
-    dna.userData = {
-      floatSpeed: 0.2 + Math.random() * 0.25,
-      floatPhase: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.3,
-      baseY: dna.position.y,
-      rippleAffected: true
-    };
-    chemGroup.add(dna);
-    chemElements.push(dna);
-  }
-
-  // 放置 4 个 CO₂ 分子
-  for (let i = 0; i < 4; i++) {
-    const mol = makeCO2Molecule(0.8 + Math.random() * 0.4);
-    const pos = spreadPos(6, 22, 7);
-    mol.position.set(pos.x, pos.y, pos.z);
-    mol.rotation.y = Math.random() * Math.PI;
-    mol.userData = {
-      floatSpeed: 0.2 + Math.random() * 0.3,
-      floatPhase: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.4,
-      baseY: mol.position.y,
-      rippleAffected: true
-    };
-    chemGroup.add(mol);
-    chemElements.push(mol);
-  }
-
-  // 放置 3 个 NaCl 晶格
-  for (let i = 0; i < 3; i++) {
-    const lat = makeNaClLattice(0.7 + Math.random() * 0.3);
-    const pos = spreadPos(7, 21, 8);
-    lat.position.set(pos.x, pos.y, pos.z);
-    lat.userData = {
-      floatSpeed: 0.15 + Math.random() * 0.2,
-      floatPhase: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.2,
-      baseY: lat.position.y,
-      rippleAffected: true
-    };
-    chemGroup.add(lat);
-    chemElements.push(lat);
-  }
-
-  // 放置 6 个带电子轨道的原子
-  for (let i = 0; i < 6; i++) {
-    const atom = makeAtomWithOrbit(0.7 + Math.random() * 0.5);
-    const pos = spreadPos(5, 23, 6);
-    atom.position.set(pos.x, pos.y, pos.z);
-    atom.userData = {
-      floatSpeed: 0.25 + Math.random() * 0.35,
-      floatPhase: Math.random() * Math.PI * 2,
-      rotSpeed: (Math.random() - 0.5) * 0.6,
-      baseY: atom.position.y,
-      rippleAffected: true,
-      hasElectrons: true
-    };
-    chemGroup.add(atom);
-    chemElements.push(atom);
-  }
-
-  // 为所有化学元素记录基础 XZ 坐标（用于涟漪偏移计算，避免漂移）
-  chemElements.forEach(el => {
-    el.userData.baseX = el.position.x;
-    el.userData.baseZ = el.position.z;
-  });
-
-  const raycaster = new THREE.Raycaster();
-  const pointer = new THREE.Vector2();
-  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  const hit = new THREE.Vector3();
-  let rippleIndex = 0;
-  let lastRippleAt = 0;
-
-  function addRipple(clientX, clientY) {
-    pointer.x = (clientX / window.innerWidth) * 2 - 1;
-    pointer.y = -(clientY / window.innerHeight) * 2 + 1;
-    raycaster.setFromCamera(pointer, camera);
-    if (!raycaster.ray.intersectPlane(groundPlane, hit)) return;
-
-    const now = performance.now();
-    // 鼠标快速移动时节流，避免同屏涟漪过多
-    if (now - lastRippleAt < 70) return;
-    lastRippleAt = now;
-
-    uniforms.uRipples.value[rippleIndex].set(hit.x, hit.z, clock.getElapsedTime(), 1.0);
-    rippleIndex = (rippleIndex + 1) % BG.maxRipples;
-  }
-
-  window.addEventListener("mousemove", (event) => addRipple(event.clientX, event.clientY), { passive: true });
-  window.addEventListener("touchmove", (event) => {
-    const t = event.touches && event.touches[0];
-    if (t) addRipple(t.clientX, t.clientY);
-  }, { passive: true });
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 180);
+  camera.position.set(0, 2.5, 27);
+  camera.lookAt(0, 1.5, -8);
 
   const clock = new THREE.Clock();
+  const palette = [0x62d9ff, 0xa8f4ff, 0xb39aff, 0xf2d58b];
+
+  canvas.dataset.backgroundEffect = "cursor-meteor-trail";
+
+  function createStarField() {
+    const positions = new Float32Array(SETTINGS.stars * 3);
+    const colors = new Float32Array(SETTINGS.stars * 3);
+    const sizes = new Float32Array(SETTINGS.stars);
+    const phases = new Float32Array(SETTINGS.stars);
+
+    for (let index = 0; index < SETTINGS.stars; index++) {
+      positions[index * 3] = (Math.random() - 0.5) * 90;
+      positions[index * 3 + 1] = -18 + Math.random() * 55;
+      positions[index * 3 + 2] = -65 + Math.random() * 72;
+      const color = new THREE.Color(palette[index % palette.length]);
+      colors[index * 3] = color.r;
+      colors[index * 3 + 1] = color.g;
+      colors[index * 3 + 2] = color.b;
+      sizes[index] = 0.65 + Math.random() * 1.55;
+      phases[index] = Math.random() * Math.PI * 2;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
+    geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
+
+    const material = new THREE.ShaderMaterial({
+      uniforms: { uTime: { value: 0 } },
+      transparent: true,
+      vertexColors: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      vertexShader: `
+        attribute float aSize;
+        attribute float aPhase;
+        varying vec3 vColor;
+        varying float vPulse;
+        uniform float uTime;
+
+        void main() {
+          vec4 viewPosition = modelViewMatrix * vec4(position, 1.0);
+          vColor = color;
+          vPulse = 0.58 + 0.42 * sin(uTime * (0.55 + aSize * 0.22) + aPhase);
+          gl_PointSize = aSize * vPulse * (62.0 / max(1.0, -viewPosition.z));
+          gl_Position = projectionMatrix * viewPosition;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vColor;
+        varying float vPulse;
+
+        void main() {
+          vec2 center = gl_PointCoord - 0.5;
+          float distanceToCenter = length(center);
+          float glow = 1.0 - smoothstep(0.04, 0.5, distanceToCenter);
+          glow += (1.0 - smoothstep(0.0, 0.12, distanceToCenter)) * 0.7;
+          gl_FragColor = vec4(vColor, glow * vPulse * 0.52);
+        }
+      `
+    });
+
+    const points = new THREE.Points(geometry, material);
+    points.userData.material = material;
+    points.renderOrder = -2;
+    scene.add(points);
+    return points;
+  }
+
+  function meshMaterial(color, opacity, wireframe) {
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      wireframe: Boolean(wireframe),
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: true
+    });
+    mat.userData.baseOpacity = opacity;
+    return mat;
+  }
+
+  function lineMaterial(color, opacity) {
+    const mat = new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: true
+    });
+    mat.userData.baseOpacity = opacity;
+    return mat;
+  }
+
+  function connect(group, from, to, color, opacity) {
+    const midpoint = from.clone().add(to).multiplyScalar(0.5);
+    const bond = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.022, 0.022, from.distanceTo(to), 5),
+      meshMaterial(color, opacity, false)
+    );
+    bond.position.copy(midpoint);
+    bond.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), to.clone().sub(from).normalize());
+    group.add(bond);
+  }
+
+  function makeMolecule(color) {
+    const group = new THREE.Group();
+    const positions = [
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(1.25, 0.48, 0.28),
+      new THREE.Vector3(-1.12, 0.65, -0.38),
+      new THREE.Vector3(0.12, -1.16, 0.72),
+      new THREE.Vector3(-0.15, 0.32, 1.25)
+    ];
+    positions.forEach((position, index) => {
+      const atom = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(index ? 0.19 : 0.32, 1),
+        meshMaterial(index === 2 ? 0xf2d58b : color, index ? 0.27 : 0.41, true)
+      );
+      atom.position.copy(position);
+      group.add(atom);
+      if (index) connect(group, positions[0], position, color, 0.18);
+    });
+    return group;
+  }
+
+  function makeOrbital(color, isDOrbital) {
+    const group = new THREE.Group();
+    group.add(new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.22, 1),
+      meshMaterial(0xf2d58b, 0.40, true)
+    ));
+
+    const lobeDirections = isDOrbital
+      ? [[1, 1], [-1, -1], [-1, 1], [1, -1]]
+      : [[0, 1], [0, -1]];
+
+    lobeDirections.forEach(([x, y]) => {
+      const lobe = new THREE.Mesh(
+        new THREE.SphereGeometry(0.66, 10, 7),
+        meshMaterial(color, 0.15, true)
+      );
+      lobe.scale.set(isDOrbital ? 0.48 : 0.62, 1.15, 0.48);
+      lobe.position.set(x * 0.58, y * 0.66, 0);
+      if (isDOrbital) lobe.rotation.z = x * y > 0 ? -Math.PI / 4 : Math.PI / 4;
+      group.add(lobe);
+    });
+
+    for (let orbitIndex = 0; orbitIndex < 3; orbitIndex++) {
+      const points = [];
+      for (let step = 0; step <= 64; step++) {
+        const angle = step / 64 * Math.PI * 2;
+        points.push(new THREE.Vector3(Math.cos(angle) * 1.65, 0, Math.sin(angle) * 0.68));
+      }
+      const orbit = new THREE.LineLoop(
+        new THREE.BufferGeometry().setFromPoints(points),
+        lineMaterial(color, 0.15)
+      );
+      orbit.rotation.set(orbitIndex * 0.9, orbitIndex * 0.52, orbitIndex * 0.68);
+      group.add(orbit);
+    }
+    return group;
+  }
+
+  function makeFormulaSilhouette(color) {
+    const group = new THREE.Group();
+    const ring = [];
+    for (let index = 0; index < 6; index++) {
+      const angle = index * Math.PI / 3;
+      ring.push(new THREE.Vector3(Math.cos(angle) * 1.12, Math.sin(angle) * 1.12, 0));
+    }
+    group.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(ring.concat([ring[0]])),
+      lineMaterial(color, 0.27)
+    ));
+    connect(group, ring[0], ring[0].clone().add(new THREE.Vector3(1.08, 0.6, 0)), color, 0.2);
+    connect(group, ring[3], ring[3].clone().add(new THREE.Vector3(-1.0, -0.65, 0)), color, 0.18);
+    return group;
+  }
+
+  function collectMaterials(object) {
+    const materials = [];
+    object.traverse((child) => {
+      if (child.material) materials.push(child.material);
+    });
+    return materials;
+  }
+
+  const chemicalGroup = new THREE.Group();
+  const chemicalObjects = [];
+  const occupied = [];
+  scene.add(chemicalGroup);
+
+  function chemistryPosition() {
+    let candidate;
+    for (let attempt = 0; attempt < 45; attempt++) {
+      candidate = new THREE.Vector3(
+        (Math.random() - 0.5) * (compact ? 32 : 56),
+        -8 + Math.random() * 25,
+        -40 + Math.random() * 42
+      );
+      if (occupied.every((other) => other.distanceTo(candidate) > 4.4)) break;
+    }
+    occupied.push(candidate.clone());
+    return candidate;
+  }
+
+  for (let index = 0; index < SETTINGS.chemicalObjects; index++) {
+    const color = palette[index % palette.length];
+    let object;
+    if (index % 3 === 0) object = makeMolecule(color);
+    else if (index % 3 === 1) object = makeOrbital(color, index % 2 === 0);
+    else object = makeFormulaSilhouette(color);
+
+    const position = chemistryPosition();
+    const scale = 0.55 + Math.random() * 0.72;
+    object.position.copy(position);
+    object.scale.setScalar(scale);
+    object.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    object.userData = {
+      basePosition: position.clone(),
+      baseScale: scale,
+      phase: Math.random() * Math.PI * 2,
+      floatSpeed: 0.13 + Math.random() * 0.18,
+      spin: new THREE.Vector3(
+        (Math.random() - 0.5) * 0.002,
+        (Math.random() - 0.5) * 0.0028,
+        (Math.random() - 0.5) * 0.0017
+      ),
+      materials: collectMaterials(object)
+    };
+    chemicalGroup.add(object);
+    chemicalObjects.push(object);
+  }
+
+  function makeHeadTexture() {
+    const textureCanvas = document.createElement("canvas");
+    textureCanvas.width = 96;
+    textureCanvas.height = 96;
+    const context = textureCanvas.getContext("2d");
+    const gradient = context.createRadialGradient(48, 48, 0, 48, 48, 46);
+    gradient.addColorStop(0, "rgba(255,255,255,1)");
+    gradient.addColorStop(0.12, "rgba(190,245,255,.95)");
+    gradient.addColorStop(0.42, "rgba(65,185,255,.42)");
+    gradient.addColorStop(1, "rgba(75,100,255,0)");
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 96, 96);
+    return new THREE.CanvasTexture(textureCanvas);
+  }
+
+  const headTexture = makeHeadTexture();
+  const cursorTrails = [];
+
+  function makeMeteorTrailMaterial() {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uOpacity: { value: 0 },
+        uColor: { value: new THREE.Color(0x75ddff) }
+      },
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        uniform vec3 uColor;
+        varying vec2 vUv;
+
+        void main() {
+          float distanceFromCore = abs(vUv.y - 0.5) * 2.0;
+          float core = 1.0 - smoothstep(0.0, 0.16, distanceFromCore);
+          float halo = 1.0 - smoothstep(0.08, 1.0, distanceFromCore);
+          float tailFade = mix(1.0, 0.68, vUv.x);
+          float softJoin = smoothstep(0.0, 0.08, vUv.x) * smoothstep(0.0, 0.08, 1.0 - vUv.x);
+          vec3 color = mix(uColor, vec3(0.72, 0.50, 1.0), vUv.x * 0.55);
+          float alpha = (core * 0.90 + halo * 0.32) * tailFade * softJoin * uOpacity;
+          gl_FragColor = vec4(color * 1.8, min(1.0, alpha * 1.35));
+        }
+      `
+    });
+  }
+
+  function makeCursorTrail() {
+    const group = new THREE.Group();
+    const trailMaterial = makeMeteorTrailMaterial();
+    const trail = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), trailMaterial);
+    trail.renderOrder = 20;
+    group.add(trail);
+
+    group.userData = {
+      active: false,
+      age: 0,
+      life: reducedMotion ? 0.28 : 0.62,
+      brightness: 1,
+      trail,
+      trailMaterial
+    };
+    group.visible = false;
+    group.renderOrder = 20;
+    scene.add(group);
+    cursorTrails.push(group);
+    return group;
+  }
+
+  for (let index = 0; index < SETTINGS.trailSegments; index++) {
+    makeCursorTrail();
+  }
+
+  const cursorHeadMaterial = new THREE.SpriteMaterial({
+    map: headTexture,
+    color: 0xe4fbff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: false,
+    fog: false
+  });
+  const cursorHead = new THREE.Sprite(cursorHeadMaterial);
+  cursorHead.scale.setScalar(0.27);
+  cursorHead.visible = false;
+  cursorHead.renderOrder = 22;
+  scene.add(cursorHead);
+
+  const stars = createStarField();
+
+  const pointerNdc = new THREE.Vector2();
+  const pointerRaycaster = new THREE.Raycaster();
+  const cursorPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -4);
+  const cursorWorld = new THREE.Vector3();
+  const lastCursorWorld = new THREE.Vector3();
+  const hitPoint = new THREE.Vector3();
+  let hasCursorPoint = false;
+  let cursorTrailIndex = 0;
+  let lastTrailAt = 0;
+  let cursorPulse = 0;
+
+  function cursorInfluence(position) {
+    if (cursorPulse <= 0) return 0;
+    const distance = Math.hypot(position.x - cursorWorld.x, position.y - cursorWorld.y);
+    return Math.max(0, 1 - distance / 5) * cursorPulse;
+  }
+
+  function addCursorTrail(clientX, clientY) {
+    pointerNdc.x = clientX / window.innerWidth * 2 - 1;
+    pointerNdc.y = -(clientY / window.innerHeight * 2 - 1);
+    pointerRaycaster.setFromCamera(pointerNdc, camera);
+    if (!pointerRaycaster.ray.intersectPlane(cursorPlane, hitPoint)) return;
+
+    if (!hasCursorPoint) {
+      lastCursorWorld.copy(hitPoint);
+      cursorWorld.copy(hitPoint);
+      hasCursorPoint = true;
+      return;
+    }
+
+    const now = performance.now();
+    const movement = hitPoint.distanceTo(lastCursorWorld);
+    if (movement < 0.035 || now - lastTrailAt < 13) return;
+    lastTrailAt = now;
+
+    const group = cursorTrails[cursorTrailIndex];
+    cursorTrailIndex = (cursorTrailIndex + 1) % cursorTrails.length;
+    const data = group.userData;
+    const tailDirection = lastCursorWorld.clone().sub(hitPoint).normalize();
+    const visualLength = movement + 0.24;
+    const brightness = Math.min(1, 0.68 + movement * 1.8);
+
+    group.visible = true;
+    group.position.copy(hitPoint);
+    data.active = true;
+    data.age = 0;
+    data.brightness = brightness;
+    data.trail.position.copy(tailDirection).multiplyScalar(visualLength * 0.5);
+    data.trail.rotation.z = Math.atan2(tailDirection.y, tailDirection.x);
+    data.trail.scale.set(visualLength, 0.095 + Math.min(movement * 0.12, 0.085), 1);
+    data.trailMaterial.uniforms.uOpacity.value = brightness;
+    cursorHead.position.copy(hitPoint);
+    cursorHead.scale.setScalar(0.20 + brightness * 0.10);
+    cursorHeadMaterial.opacity = Math.min(1, brightness * 1.12);
+    cursorHead.visible = true;
+
+    lastCursorWorld.copy(hitPoint);
+    cursorWorld.copy(hitPoint);
+    cursorPulse = 1;
+  }
+
+  window.addEventListener("pointermove", (event) => {
+    addCursorTrail(event.clientX, event.clientY);
+  }, { passive: true });
+
+  window.addEventListener("pointerout", (event) => {
+    if (!event.relatedTarget) hasCursorPoint = false;
+  }, { passive: true });
 
   function resize() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-    renderer.setSize(w, h, false);
-    camera.aspect = w / h;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.fov = width < 620 ? 57 : 50;
     camera.updateProjectionMatrix();
   }
-  window.addEventListener("resize", resize);
+  window.addEventListener("resize", resize, { passive: true });
   resize();
 
+  let animationFrame;
   function animate() {
-    requestAnimationFrame(animate);
-    const t = clock.getElapsedTime();
-    uniforms.uTime.value = t;
-    mesh.rotation.z = Math.sin(t * 0.08) * 0.018;
+    animationFrame = requestAnimationFrame(animate);
+    const delta = Math.min(clock.getDelta(), 0.05);
+    const time = clock.elapsedTime;
+    stars.userData.material.uniforms.uTime.value = time;
 
-    // 读取当前涟漪状态
-    const ripples = uniforms.uRipples.value;
+    stars.rotation.y = time * 0.0018;
+    chemicalGroup.rotation.y = Math.sin(time * 0.035) * 0.022;
 
-    // 化学元素浮动 + 旋转 + 涟漪影响
-    chemElements.forEach(el => {
-      const ud = el.userData;
-
-      // 基础浮动
-      let yOff = 0;
-      if (ud.floatSpeed) {
-        yOff = Math.sin(t * ud.floatSpeed + ud.floatPhase) * 1.2;
+    cursorPulse = Math.max(0, cursorPulse - delta * 1.8);
+    let activeTrailCount = 0;
+    cursorTrails.forEach((trailGroup) => {
+      const data = trailGroup.userData;
+      if (!data.active) return;
+      data.age += delta;
+      const fade = Math.max(0, 1 - data.age / data.life);
+      const opacity = Math.pow(fade, 1.45) * data.brightness;
+      data.trailMaterial.uniforms.uOpacity.value = opacity;
+      activeTrailCount++;
+      if (fade <= 0) {
+        data.active = false;
+        trailGroup.visible = false;
       }
+    });
+    cursorHeadMaterial.opacity = Math.pow(cursorPulse, 1.35);
+    cursorHead.visible = cursorPulse > 0.01;
+    canvas.dataset.activeCursorTrails = String(activeTrailCount);
 
-      // 涟漪影响：位移 + 推力（方向朝页面中心）
-      if (ud.rippleAffected) {
-        const bx = ud.baseX;
-        const bz = ud.baseZ;
-        let xOff = 0, zOff = 0;
-        for (let i = 0; i < ripples.length; i++) {
-          const r = ripples[i];
-          const age = t - r.z;
-          if (age > 0 && age < 4) {
-            const dx = bx - r.x;
-            const dz = bz - r.y;
-            const dist = Math.sqrt(dx * dx + dz * dz);
-            const radius = age * BG.rippleSpeed;
-            const bandDist = Math.abs(dist - radius);
-            // 涟漪环宽度范围内受影响
-            if (bandDist < 3.5) {
-              const envelope = Math.exp(-age * BG.rippleFade) * r.w;
-              const band = Math.exp(-bandDist * 0.6) * envelope;
-              // 垂直起伏
-              yOff += Math.sin(dist * BG.rippleFrequency - age * 7.0) * band * 1.8;
-              // 水平推力：朝向页面中心 (0,0)
-              const dirLen = Math.sqrt(bx * bx + bz * bz);
-              if (dirLen > 0.01) {
-                const push = band * 0.8;
-                xOff -= (bx / dirLen) * push;
-                zOff -= (bz / dirLen) * push;
-              }
-            }
-          }
-        }
-        el.position.x = bx + xOff;
-        el.position.z = bz + zOff;
-      } else {
-        el.position.x = ud.baseX;
-        el.position.z = ud.baseZ;
-      }
-
-      el.position.y = ud.baseY + yOff;
-
-      // 旋转
-      if (ud.rotSpeed) {
-        el.rotation.y += ud.rotSpeed * 0.01;
-        el.rotation.x += ud.rotSpeed * 0.006;
-      }
-
-      // 电子轨道动画
-      if (ud.hasElectrons) {
-        el.children.forEach(child => {
-          const cd = child.userData;
-          if (cd && cd.orbitR !== undefined) {
-            const ang = t * cd.orbitSpeed + cd.orbitPhase;
-            const x = Math.cos(ang) * cd.orbitR;
-            const z = Math.sin(ang) * cd.orbitR;
-            // 应用轨道倾斜
-            const tilt = cd.orbitTilt;
-            const cy = x * Math.sin(tilt[0]) + z * Math.sin(tilt[2]);
-            const cx = x * Math.cos(tilt[0]) + z * Math.sin(tilt[1]);
-            const cz = z * Math.cos(tilt[2]) - x * Math.sin(tilt[1]);
-            child.position.set(cx, cy, cz);
-          }
-        });
-      }
+    chemicalObjects.forEach((object) => {
+      const data = object.userData;
+      const influence = cursorInfluence(data.basePosition);
+      const breath = 0.92 + Math.sin(time * (0.34 + data.floatSpeed) + data.phase) * 0.09;
+      object.position.set(
+        data.basePosition.x + Math.sin(time * 0.11 + data.phase) * 0.28,
+        data.basePosition.y + Math.sin(time * data.floatSpeed + data.phase) * 0.58,
+        data.basePosition.z
+      );
+      object.scale.setScalar(data.baseScale * (1 + influence * 0.06));
+      object.rotation.x += data.spin.x;
+      object.rotation.y += data.spin.y;
+      object.rotation.z += data.spin.z;
+      data.materials.forEach((mat) => {
+        mat.opacity = Math.min(0.66, mat.userData.baseOpacity * breath * (1 + influence * 1.1));
+      });
     });
 
     renderer.render(scene, camera);
   }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) cancelAnimationFrame(animationFrame);
+    else {
+      clock.getDelta();
+      animate();
+    }
+  });
+
   animate();
 })();
