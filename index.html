@@ -251,6 +251,73 @@ body::before {
 /* 热点标签面板 */
 .agent-tag-actions { margin-bottom: 10px; }
 
+/* 附加文献栏(拖拽/点击手柄后显示) */
+.attach-bar {
+  flex: 0 0 auto;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.attach-bar[hidden] { display: none; }
+.attach-label { font-size: 12px; color: var(--muted); }
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 320px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(103, 232, 249, 0.4);
+  background: rgba(103, 232, 249, 0.1);
+  font-size: 12px;
+  color: #d8f6ff;
+}
+.attach-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attach-chip button {
+  appearance: none;
+  border: none;
+  background: rgba(251, 113, 133, 0.18);
+  color: var(--coral);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  line-height: 1;
+}
+.attach-chip button:hover { background: rgba(251, 113, 133, 0.4); color: #fff; }
+
+/* 聊天区拖放高亮 */
+.chat-scroll.drop-target { border-color: rgba(103, 232, 249, 0.6); box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.15), 0 22px 70px rgba(0, 0, 0, 0.22); }
+
+/* 卡片拖拽手柄(点击或拖拽附加给 Agent) */
+.drag-handle {
+  position: absolute;
+  top: 10px;
+  right: 48px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(103, 232, 249, 0.3);
+  background: rgba(8, 18, 34, 0.6);
+  color: rgba(103, 232, 249, 0.6);
+  font-size: 14px;
+  cursor: grab;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s ease;
+  user-select: none;
+}
+.drag-handle:hover { color: #fff; border-color: var(--cyan); box-shadow: 0 0 12px rgba(103, 232, 249, 0.4); transform: scale(1.12); }
+.drag-handle:active { cursor: grabbing; }
+
 /* ================= 底部输入区 ================= */
 .composer {
   flex: 0 0 auto;
@@ -951,6 +1018,9 @@ body.dragging { cursor: col-resize; user-select: none; }
         </div>
       </div>
 
+      <!-- 附加文献栏 -->
+      <div class="attach-bar" id="attachBar" hidden></div>
+
       <!-- 底部输入区 -->
       <form class="composer" id="composer">
         <textarea id="composerInput" rows="1" placeholder="向 Agent 提问化学问题… 输入 /news 唤起新闻文献面板(Enter 发送,Shift+Enter 换行)"></textarea>
@@ -1183,6 +1253,7 @@ async function callAgentChat(text) {
       message: text,
       history: chatHistory.slice(-10),
       news: newsData.slice(0, 15).map(n => ({ title: n.title, summary: n.summary, type: n.type })),
+      articles: attachedArticles.map(a => ({ title: a.title, url: a.url, summary: a.summary, source: a.source })),
     }),
   });
   const json = await resp.json();
@@ -1196,6 +1267,68 @@ function fmtReply(text) {
     .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
     .replace(/\n/g, "<br>");
 }
+
+// ===== 附加文献(拖拽/点击手柄) =====
+const attachedArticles = [];
+const attachBar = $("attachBar");
+
+function renderAttachBar() {
+  if (attachedArticles.length === 0) {
+    attachBar.hidden = true;
+    attachBar.innerHTML = "";
+    return;
+  }
+  attachBar.hidden = false;
+  attachBar.innerHTML = '<span class="attach-label">📎 附加给 Agent:</span>' + attachedArticles.map((a, i) =>
+    `<span class="attach-chip"><span title="${escapeHtml(a.title)}">《${escapeHtml(displayName(a))}》</span><button data-rm="${i}" title="移除">✕</button></span>`).join("");
+}
+attachBar.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-rm]");
+  if (!btn) return;
+  attachedArticles.splice(parseInt(btn.dataset.rm), 1);
+  renderAttachBar();
+});
+function attachArticle(item) {
+  if (!item) return;
+  if (attachedArticles.some(a => a.title === item.title)) return; // 去重
+  if (attachedArticles.length >= 3) attachedArticles.shift(); // 最多 3 篇
+  attachedArticles.push({ title: item.title, url: item.url || "", summary: item.summary || "", source: item.source || "" });
+  renderAttachBar();
+  addMessage("ai", `已把文献<b>《${escapeHtml(displayName(item))}》</b>附加到对话 📎,我会阅读它的网页内容后回答你的相关问题。可同时附加多篇(最多 3 篇),点芯片上的 ✕ 移除。`);
+}
+
+// 卡片手柄:拖拽或点击都能附加
+masonryEl.addEventListener("dragstart", (e) => {
+  const handle = e.target.closest(".drag-handle");
+  if (!handle) return;
+  e.dataTransfer.setData("text/x-news-index", handle.dataset.dragidx);
+  e.dataTransfer.effectAllowed = "copy";
+  const card = handle.closest(".story");
+  if (card) e.dataTransfer.setDragImage(card, 24, 24);
+  chatScroll.classList.add("drop-target");
+});
+masonryEl.addEventListener("dragend", () => chatScroll.classList.remove("drop-target"));
+masonryEl.addEventListener("click", (e) => {
+  const handle = e.target.closest(".drag-handle");
+  if (!handle) return;
+  e.preventDefault();
+  attachArticle(newsIndexMap[parseInt(handle.dataset.dragidx)]);
+});
+
+// 聊天区接收拖放
+chatScroll.addEventListener("dragover", (e) => {
+  if (e.dataTransfer.types.includes("text/x-news-index")) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+});
+chatScroll.addEventListener("drop", (e) => {
+  const idx = e.dataTransfer.getData("text/x-news-index");
+  chatScroll.classList.remove("drop-target");
+  if (idx === "") return;
+  e.preventDefault();
+  attachArticle(newsIndexMap[parseInt(idx)]);
+});
 
 function scrollChat() { chatScroll.scrollTop = chatScroll.scrollHeight; }
 
@@ -1233,7 +1366,13 @@ async function handleUserText(text) {
   if (agentBusy || !text) return;
   agentBusy = true;
   composerSend.disabled = true;
-  addUserMessage(text);
+  // 用户气泡:问题 + 附加的文献卡片
+  const attachHtml = attachedArticles.length > 0
+    ? '<div class="cite-list">' + attachedArticles.map(a =>
+        `<a class="cite-card" href="${a.url || "#"}" target="_blank" rel="noopener noreferrer"><div class="cite-title">📎 ${escapeHtml(a.title)}</div><div class="cite-meta"><span class="cite-src">${escapeHtml(a.source || "")}</span></div></a>`
+      ).join("") + "</div>"
+    : "";
+  addMessage("user", escapeHtml(text) + attachHtml);
   const typingEl = addTyping();
 
   // 指令:唤起新闻文献
@@ -1264,9 +1403,12 @@ async function handleUserText(text) {
     }
     typingEl.remove();
     addMessage("ai", replyHtml);
-    // 成功的真实回复写入对话历史
+    // 成功的真实回复写入对话历史(注明附件,供后续追问理解上下文)
     if (replyText) {
-      chatHistory.push({ role: "user", content: text }, { role: "assistant", content: replyText });
+      const historyText = attachedArticles.length > 0
+        ? text + "\n[附加文献:" + attachedArticles.map(a => "《" + a.title + "》").join("") + "]"
+        : text;
+      chatHistory.push({ role: "user", content: historyText }, { role: "assistant", content: replyText });
       if (chatHistory.length > 20) chatHistory.splice(0, chatHistory.length - 20);
     }
   }
@@ -1532,6 +1674,7 @@ function newsTemplate(item, index) {
   return `
     <article class="story ${featured ? "story-featured" : ""}" data-type="${item.type}">
       ${decoHtml}${favBtnHtml(item, index)}
+      <span class="drag-handle" draggable="true" data-dragidx="${index}" title="点击或拖拽到对话区,把本文附加给 Agent">⠿</span>
       <div class="story-meta-line"><span class="story-time">${escapeHtml(item.time || "")}</span>${tagHtml}${importantHtml}</div>
       <h2 class="${featured ? "story-title-xl" : "story-title-sm"}"${titleAttr}>${escapeHtml(title)}${translateBtnHtml(item)}</h2>
       <p class="${featured ? "story-summary-lg" : "story-summary"}">${escapeHtml(item.summary || "")}</p>
