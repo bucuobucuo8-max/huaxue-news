@@ -235,11 +235,73 @@ body::before {
 .sub-panel[hidden] { display: none; }
 
 /* 分子可视化面板 */
+.mol-search { display: flex; gap: 8px; margin-bottom: 10px; }
+#molInput {
+  flex: 1;
+  min-width: 0;
+  appearance: none;
+  border: 1px solid rgba(103, 232, 249, 0.3);
+  background: rgba(8, 18, 34, 0.55);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 9px 13px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+#molInput::placeholder { color: rgba(210, 232, 255, 0.35); }
+#molInput:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px rgba(103, 232, 249, 0.12); }
+#molBtn {
+  appearance: none;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(135deg, #67e8f9, #a78bfa);
+  transition: box-shadow 0.25s ease;
+  white-space: nowrap;
+}
+#molBtn:hover:not(:disabled) { box-shadow: 0 6px 18px rgba(103, 232, 249, 0.35); }
+#molBtn:disabled { opacity: 0.6; cursor: wait; }
+.mol-examples { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.mol-examples button {
+  appearance: none;
+  border: 1px solid rgba(103, 232, 249, 0.28);
+  background: rgba(103, 232, 249, 0.08);
+  color: var(--cyan);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+.mol-examples button:hover { border-color: var(--cyan); box-shadow: 0 3px 10px rgba(103, 232, 249, 0.2); }
 .molecule-stage { display: flex; align-items: center; gap: 18px; }
 .molecule-stage svg { flex: 0 0 auto; animation: molSpin 14s linear infinite; }
 @keyframes molSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.molecule-caption { font-size: 13px; color: var(--muted); line-height: 1.7; }
+.mol-img-wrap {
+  flex: 0 0 auto;
+  width: 180px;
+  height: 180px;
+  border-radius: 14px;
+  background: #f4f8fb; /* PubChem 结构图为黑线透明底,需浅色底才能看清 */
+  border: 1px solid rgba(103, 232, 249, 0.35);
+  box-shadow: 0 0 20px rgba(103, 232, 249, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.mol-img-wrap img { max-width: 92%; max-height: 92%; display: block; }
+.molecule-caption { font-size: 13px; color: var(--muted); line-height: 1.7; min-width: 0; }
 .molecule-caption b { color: var(--cyan); display: block; margin-bottom: 4px; font-size: 14px; }
+.mol-prop { display: flex; gap: 6px; font-size: 12px; margin-top: 3px; }
+.mol-prop dt { color: var(--muted); flex: 0 0 auto; }
+.mol-prop dd { color: #e0f2fe; font-weight: 600; word-break: break-all; }
 
 /* 文献引用面板 */
 .lit-item { padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(167, 139, 250, 0.2); background: rgba(8, 18, 34, 0.45); margin-bottom: 8px; }
@@ -993,17 +1055,30 @@ body.dragging { cursor: col-resize; user-select: none; }
           <button class="sub-tab" data-sub="tags">🏷️ 热点标签</button>
         </div>
         <div class="sub-panel" id="subMolecule" hidden>
+          <div class="mol-search">
+            <input id="molInput" type="text" placeholder="输入化合物:英文名 / 分子式 / SMILES,如 aspirin、C6H6、CCO" autocomplete="off">
+            <button id="molBtn">生成结构</button>
+          </div>
+          <div class="mol-examples" id="molExamples">
+            <button data-q="C6H6">苯 C₆H₆</button>
+            <button data-q="CCO">乙醇 CCO</button>
+            <button data-q="aspirin">阿司匹林</button>
+            <button data-q="caffeine">咖啡因</button>
+            <button data-q="C6H12O6">葡萄糖</button>
+          </div>
           <div class="molecule-stage">
-            <svg width="86" height="86" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-              <polygon points="50,10 86,30 86,70 50,90 14,70 14,30" fill="none" stroke="#67e8f9" stroke-width="2"/>
-              <polygon points="50,22 74,36 74,64 50,78 26,64 26,36" fill="none" stroke="#a78bfa" stroke-width="1.4" opacity="0.7"/>
-              <circle cx="50" cy="10" r="6" fill="#67e8f9"/><circle cx="86" cy="30" r="6" fill="#a78bfa"/>
-              <circle cx="86" cy="70" r="6" fill="#67e8f9"/><circle cx="50" cy="90" r="6" fill="#a78bfa"/>
-              <circle cx="14" cy="70" r="6" fill="#67e8f9"/><circle cx="14" cy="30" r="6" fill="#a78bfa"/>
-            </svg>
-            <div class="molecule-caption">
-              <b>苯环 C₆H₆ · 芳香烃结构预览</b>
-              分子可视化面板槽:接入后端后可在此渲染 Agent 返回的 SMILES / 3D 分子结构(如 3Dmol.js)。
+            <div class="mol-img-wrap" id="molImgWrap">
+              <svg width="120" height="120" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <polygon points="50,10 86,30 86,70 50,90 14,70 14,30" fill="none" stroke="#67e8f9" stroke-width="2"/>
+                <polygon points="50,22 74,36 74,64 50,78 26,64 26,36" fill="none" stroke="#a78bfa" stroke-width="1.4" opacity="0.7"/>
+                <circle cx="50" cy="10" r="6" fill="#67e8f9"/><circle cx="86" cy="30" r="6" fill="#a78bfa"/>
+                <circle cx="86" cy="70" r="6" fill="#67e8f9"/><circle cx="50" cy="90" r="6" fill="#a78bfa"/>
+                <circle cx="14" cy="70" r="6" fill="#67e8f9"/><circle cx="14" cy="30" r="6" fill="#a78bfa"/>
+              </svg>
+            </div>
+            <div class="molecule-caption" id="molInfo">
+              <b>分子结构可视化</b>
+              输入化合物英文名、分子式或 SMILES,点击「生成结构」,将调用 PubChem 渲染 2D 结构图与基本属性。
             </div>
           </div>
         </div>
@@ -1468,6 +1543,61 @@ function renderLitPanel() {
       <div class="lit-meta">${escapeHtml(n.source || "")} · ${escapeHtml(n.time || "")}</div>
     </div>`).join("");
 }
+
+// ===== 分子可视化(PubChem PUG REST,免费无密钥) =====
+const molInput = $("molInput"), molBtn = $("molBtn"), molImgWrap = $("molImgWrap"), molInfo = $("molInfo");
+const PUBCHEM = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound";
+
+// 根据输入形态决定查询方式优先级:纯分子式 → fastformula;含 SMILES 特征字符 → smiles;其余按名称(三种方式依次尝试,保证命中)
+function molQueryKinds(q) {
+  if (/^([A-Z][a-z]?\d*)+$/.test(q)) return ["fastformula", "name", "smiles"];
+  if (/[()=#\[\]@\\\/+]/.test(q)) return ["smiles", "name", "fastformula"];
+  return ["name", "smiles", "fastformula"];
+}
+
+async function renderMolecule(query) {
+  query = (query || "").trim();
+  if (!query) return;
+  molBtn.disabled = true;
+  molBtn.textContent = "生成中…";
+  molInfo.innerHTML = `<b>查询中…</b>正在向 PubChem 请求「${escapeHtml(query)}」的结构数据。`;
+  const kinds = molQueryKinds(query);
+  let hit = null;
+  for (const kind of kinds) {
+    try {
+      const resp = await fetch(`${PUBCHEM}/${kind}/${encodeURIComponent(query)}/property/MolecularFormula,MolecularWeight,IUPACName,IsomericSMILES/JSON`);
+      if (!resp.ok) continue;
+      const json = await resp.json();
+      const prop = json.PropertyTable && json.PropertyTable.Properties && json.PropertyTable.Properties[0];
+      if (prop) { hit = { kind, prop }; break; }
+    } catch {}
+  }
+  molBtn.disabled = false;
+  molBtn.textContent = "生成结构";
+  if (!hit) {
+    molInfo.innerHTML = `<b>未找到「${escapeHtml(query)}」</b>PubChem 无匹配结果。请尝试:英文通用名(如 ethanol)、标准分子式(如 C2H6O)或合法 SMILES(如 CCO)。`;
+    return;
+  }
+  const imgUrl = `${PUBCHEM}/${hit.kind}/${encodeURIComponent(query)}/PNG`;
+  molImgWrap.innerHTML = `<img src="${imgUrl}" alt="${escapeHtml(query)} 结构式">`;
+  const p = hit.prop;
+  molInfo.innerHTML = `
+    <b>${escapeHtml(p.IUPACName || query)}</b>
+    <dl>
+      <div class="mol-prop"><dt>分子式</dt><dd>${escapeHtml(p.MolecularFormula || "-")}</dd></div>
+      <div class="mol-prop"><dt>分子量</dt><dd>${escapeHtml(String(p.MolecularWeight || "-"))} g/mol</dd></div>
+      <div class="mol-prop"><dt>SMILES</dt><dd>${escapeHtml(p.IsomericSMILES || "-")}</dd></div>
+      <div class="mol-prop"><dt>数据源</dt><dd>PubChem CID ${p.CID}</dd></div>
+    </dl>`;
+}
+molBtn.addEventListener("click", () => renderMolecule(molInput.value));
+molInput.addEventListener("keydown", (e) => { if (e.key === "Enter") renderMolecule(molInput.value); });
+$("molExamples").addEventListener("click", (e) => {
+  const chip = e.target.closest("[data-q]");
+  if (!chip) return;
+  molInput.value = chip.dataset.q;
+  renderMolecule(chip.dataset.q);
+});
 
 // Agent 侧热点标签
 let agentTags = [];
