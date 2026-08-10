@@ -190,6 +190,7 @@ export async function onRequestPost(context) {
       { role: 'user', content: message.slice(0, 2000) },
     ];
 
+    // 流式调用 DeepSeek(SSE),转发为纯文本流,前端打字机渲染
     const resp = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: {
@@ -199,12 +200,12 @@ export async function onRequestPost(context) {
       body: JSON.stringify({
         model: 'deepseek-chat',
         messages,
-        stream: false,
+        stream: true,
         temperature: 0.7,
       }),
     });
 
-    if (!resp.ok) {
+    if (!resp.ok || !resp.body) {
       return new Response(JSON.stringify({
         code: 502,
         message: `DeepSeek 接口错误: ${resp.status}`,
@@ -212,22 +213,48 @@ export async function onRequestPost(context) {
       }), { status: 502, headers: CORS_HEADERS });
     }
 
-    const data = await resp.json();
-    const text = (data.choices?.[0]?.message?.content || '').trim();
+    // 解析 DeepSeek SSE,逐段输出 delta.content
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    const upstream = resp.body.getReader();
+    const stream = new ReadableStream({
+      async start(controller) {
+        let buf = '';
+        try {
+          while (true) {
+            const { done, value } = await upstream.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            let idx;
+            while ((idx = buf.indexOf('\n\n')) >= 0) {
+              const chunk = buf.slice(0, idx);
+              buf = buf.slice(idx + 2);
+              for (const line of chunk.split('\n')) {
+                if (!line.startsWith('data:')) continue;
+                const payload = line.slice(5).trim();
+                if (!payload || payload === '[DONE]') continue;
+                try {
+                  const json = JSON.parse(payload);
+                  const delta = json.choices?.[0]?.delta?.content || '';
+                  if (delta) controller.enqueue(encoder.encode(delta));
+                } catch { /* 跳过不完整分片 */ }
+              }
+            }
+          }
+        } finally {
+          controller.close();
+        }
+      },
+      cancel() { upstream.cancel(); },
+    });
 
-    if (!text) {
-      return new Response(JSON.stringify({
-        code: 502,
-        message: 'DeepSeek 返回空内容',
-        data: null,
-      }), { status: 502, headers: CORS_HEADERS });
-    }
-
-    return new Response(JSON.stringify({
-      code: 200,
-      message: 'success',
-      data: text,
-    }), { headers: CORS_HEADERS });
+    return new Response(stream, {
+      headers: {
+        ...CORS_HEADERS,
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache',
+      },
+    });
 
   } catch (e) {
     return new Response(JSON.stringify({

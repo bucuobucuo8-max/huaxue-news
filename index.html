@@ -291,6 +291,11 @@ body::before {
   overflow: hidden;
 }
 .mol-img-wrap img { max-width: 92%; max-height: 92%; display: block; }
+/* 3D 分子查看器容器 */
+.mol-3d-box { width: 220px; height: 200px; cursor: grab; }
+.mol-3d-box:active { cursor: grabbing; }
+.mol-3d { width: 100%; height: 100%; position: relative; }
+.mol-3d-loading { font-size: 11px; color: #5b7a8c; text-align: center; padding-top: 86px; }
 .mol-chat-props { min-width: 0; flex: 1; }
 .mol-prop { display: flex; gap: 6px; font-size: 12px; margin-top: 3px; }
 .mol-prop dt { color: var(--muted); flex: 0 0 auto; }
@@ -1141,6 +1146,7 @@ body.dragging { cursor: col-resize; user-select: none; }
 <button class="sel-pop" id="selPop" hidden>✨ 发送给 Agent 解读</button>
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+<script src="https://3Dmol.org/build/3Dmol-min.js" async></script>
 <script>
 /* =========================================================
    化学智能体工作台 · 单文件应用
@@ -1284,8 +1290,8 @@ window.AGENT_BACKEND_HOOK = window.AGENT_BACKEND_HOOK || null;
 // 对话历史(纯文本,用于多轮上下文)
 const chatHistory = [];
 
-// 调用 /api/ai/chat,返回纯文本回复
-async function callAgentChat(text) {
+// 调用 /api/ai/chat(流式),onUpdate 回调累计文本,最终返回完整回复
+async function streamAgentChat(text, onUpdate) {
   const resp = await fetch("/api/ai/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1296,9 +1302,36 @@ async function callAgentChat(text) {
       articles: attachedArticles.map(a => ({ title: a.title, url: a.url, summary: a.summary, source: a.source })),
     }),
   });
-  const json = await resp.json();
-  if (json.code === 200 && json.data) return json.data;
-  throw new Error(json.message || "Agent 接口错误");
+  if (!resp.ok || !resp.body) {
+    let msg = "Agent 接口错误 " + resp.status;
+    try { msg = (await resp.json()).message || msg; } catch {}
+    throw new Error(msg);
+  }
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let acc = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    acc += decoder.decode(value, { stream: true });
+    if (onUpdate) onUpdate(acc);
+  }
+  if (!acc.trim()) throw new Error("DeepSeek 返回空内容");
+  return acc;
+}
+
+// 流式渲染时隐藏尾部可能出现的未完成标记([MOL]/[SUGGEST] 不半截显示)
+function visibleStreamText(acc) {
+  let cut = acc.length;
+  const upper = acc.toUpperCase();
+  for (const m of ["[MOL]", "[SUGGEST]"]) {
+    const full = upper.indexOf(m);
+    if (full >= 0) cut = Math.min(cut, full);
+    for (let k = 1; k < m.length; k++) {
+      if (upper.endsWith(m.slice(0, k))) { cut = Math.min(cut, acc.length - k); break; }
+    }
+  }
+  return acc.slice(0, cut);
 }
 
 // AI 纯文本回复 → 气泡 HTML(转义 + 换行/列表简单排版)
@@ -1435,12 +1468,13 @@ async function handleUserText(text) {
   addMessage("user", escapeHtml(text) + attachHtml);
   const typingEl = addTyping();
 
-  // 意图:分子结构查询 → 对话内直接渲染结构卡片
+  // 意图:分子结构查询 → 对话内直接渲染 3D 结构卡片
   const molQuery = parseMoleculeQuery(text);
   if (molQuery) {
     const result = await fetchMolecule(molQuery);
     typingEl.remove();
-    addMessage("ai", moleculeCardHtml(result));
+    const el = addMessage("ai", moleculeCardHtml(result));
+    el.querySelectorAll(".mol-3d").forEach(initMol3D);
     agentBusy = false;
     composerSend.disabled = false;
     return;
@@ -1457,37 +1491,42 @@ async function handleUserText(text) {
       addMessage("ai", `已为你唤起新闻文献面板 📰,新闻数据加载后可在此查看引用卡片。`);
     }
   } else {
-    let replyHtml = null;
     let replyText = "";
     if (typeof window.AGENT_BACKEND_HOOK === "function") {
-      // 自定义后端钩子(返回 HTML)
+      // 自定义后端钩子(返回 HTML,非流式)
+      let replyHtml = null;
       try { replyHtml = await window.AGENT_BACKEND_HOOK(text, { newsData, chatHistory }); } catch (e) { console.log("Agent 后端调用失败", e); }
+      typingEl.remove();
+      addMessage("ai", replyHtml || "⚠️ 智能体暂时无法应答,请稍后再试。");
     } else {
-      // 默认:DeepSeek 化学智能体
+      // 默认:DeepSeek 化学智能体(流式打字机输出)
+      typingEl.remove();
+      const msgEl = addMessage("ai", '<span class="bubble-hint">正在思考…</span>');
+      const bubble = msgEl.querySelector(".bubble");
       try {
-        replyText = await callAgentChat(text);
-        // 提取标记:[MOL] 分子结构、[SUGGEST] 推荐追问;正文中剔除标记
-        const molMarker = replyText.match(/\[MOL\]([\s\S]+?)\[\/MOL\]/i);
-        const sugMarker = replyText.match(/\[SUGGEST\]([\s\S]+?)\[\/SUGGEST\]/i);
-        replyText = replyText
+        const full = await streamAgentChat(text, (acc) => {
+          bubble.innerHTML = fmtReply(visibleStreamText(acc));
+          scrollChat();
+        });
+        // 流结束后处理标记:[MOL] 分子结构、[SUGGEST] 推荐追问
+        const molMarker = full.match(/\[MOL\]([\s\S]+?)\[\/MOL\]/i);
+        const sugMarker = full.match(/\[SUGGEST\]([\s\S]+?)\[\/SUGGEST\]/i);
+        replyText = full
           .replace(/\[MOL\][\s\S]+?\[\/MOL\]/gi, "")
           .replace(/\[SUGGEST\][\s\S]+?\[\/SUGGEST\]/gi, "")
           .trim();
-        replyHtml = fmtReply(replyText);
-        if (molMarker) {
-          const molResult = await fetchMolecule(molMarker[1].trim());
-          replyHtml += moleculeCardHtml(molResult);
-        }
-        if (sugMarker) {
-          replyHtml += suggestChipsHtml(sugMarker[1].split("|"));
-        }
+        let replyHtml = fmtReply(replyText);
+        if (molMarker) replyHtml += moleculeCardHtml(await fetchMolecule(molMarker[1].trim()));
+        if (sugMarker) replyHtml += suggestChipsHtml(sugMarker[1].split("|"));
+        bubble.innerHTML = replyHtml;
+        typesetMath(msgEl);
+        bubble.querySelectorAll(".mol-3d").forEach(initMol3D);
+        scrollChat();
       } catch (e) {
         console.log("Agent 对话失败", e);
-        replyHtml = `⚠️ 智能体暂时无法应答(${escapeHtml(e.message || "网络错误")}),请稍后再试。`;
+        bubble.innerHTML = `⚠️ 智能体暂时无法应答(${escapeHtml(e.message || "网络错误")}),请稍后再试。`;
       }
     }
-    typingEl.remove();
-    addMessage("ai", replyHtml);
     // 成功的真实回复写入对话历史(注明附件,供后续追问理解上下文)
     if (replyText) {
       const historyText = attachedArticles.length > 0
@@ -1624,21 +1663,46 @@ async function fetchMolecule(query) {
   return { error: `PubChem 未找到「${query}」,请尝试英文通用名、标准分子式或合法 SMILES。` };
 }
 
-// 对话内分子结构卡片
+// 对话内分子结构卡片(3D 球棍模型,可拖拽旋转;失败回退 2D 图)
 function moleculeCardHtml(r) {
   if (r.error) return `⚠️ ${escapeHtml(r.error)}`;
   const p = r.prop;
   return `
     ${r.note}🧬 <b>${escapeHtml(p.IUPACName || r.query)}</b>
     <div class="mol-chat">
-      <span class="mol-img-wrap"><img src="${r.imgUrl}" alt="${escapeHtml(r.query)} 结构式"></span>
+      <span class="mol-img-wrap mol-3d-box" title="拖拽旋转 · 滚轮缩放">
+        <div class="mol-3d" data-cid="${p.CID}" data-fallback="${r.imgUrl}"><div class="mol-3d-loading">3D 加载中…</div></div>
+      </span>
       <dl class="mol-chat-props">
         <div class="mol-prop"><dt>分子式</dt><dd>${escapeHtml(p.MolecularFormula || "-")}</dd></div>
         <div class="mol-prop"><dt>分子量</dt><dd>${escapeHtml(String(p.MolecularWeight || "-"))} g/mol</dd></div>
         <div class="mol-prop"><dt>SMILES</dt><dd>${escapeHtml(p.IsomericSMILES || "-")}</dd></div>
       </dl>
     </div>
-    <span class="bubble-hint">数据源:PubChem CID ${p.CID} · 想进一步了解它的性质?直接继续问我。</span>`;
+    <span class="bubble-hint">数据源:PubChem CID ${p.CID} · 3D 模型可拖拽旋转、滚轮缩放 · 想进一步了解它的性质?直接继续问我。</span>`;
+}
+
+// 初始化 3D 分子查看器(3Dmol.js + PubChem 3D 坐标)
+async function initMol3D(container) {
+  const cid = container.dataset.cid;
+  const fallback = container.dataset.fallback;
+  const showFallback = () => { container.innerHTML = `<img src="${fallback}" alt="2D 结构式">`; };
+  if (!window.$3Dmol || !cid) { showFallback(); return; }
+  try {
+    const resp = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF?record_type=3d`);
+    if (!resp.ok) throw new Error("no 3d");
+    const sdf = await resp.text();
+    if (!sdf || sdf.length < 50) throw new Error("empty");
+    container.innerHTML = "";
+    const viewer = window.$3Dmol.createViewer(container, { backgroundColor: "#f4f8fb" });
+    viewer.addModel(sdf, "sdf");
+    viewer.setStyle({}, { stick: { radius: 0.15 }, sphere: { scale: 0.3 } });
+    viewer.zoomTo();
+    viewer.spin("y", 0.5); // 缓慢自转展示
+    viewer.render();
+  } catch {
+    showFallback();
+  }
 }
 
 // 从用户消息中识别分子结构查询意图:/mol X、/分子 X、「X的结构式」「生成X的分子式图像」等
