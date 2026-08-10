@@ -297,6 +297,74 @@ body::before {
 .mol-3d-box:active { cursor: grabbing; }
 .mol-3d { width: 100%; height: 100%; position: relative; }
 .mol-3d-loading { font-size: 11px; color: #5b7a8c; text-align: center; padding-top: 86px; }
+/* 化学反应演示卡片:反应物 ⇌ 生成物循环变换 */
+.rxn-stage {
+  position: relative;
+  height: 200px;
+  margin-top: 10px;
+  border-radius: 14px;
+  background: rgba(4, 10, 22, 0.5);
+  border: 1px solid rgba(103, 232, 249, 0.25);
+  box-shadow: 0 0 20px rgba(103, 232, 249, 0.08);
+  overflow: hidden;
+}
+.rxn-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding-top: 18px;
+}
+.rxn-a { animation: rxnFadeA 6s ease-in-out infinite; }
+.rxn-b { animation: rxnFadeB 6s ease-in-out infinite; }
+@keyframes rxnFadeA {
+  0%, 42% { opacity: 1; transform: scale(1); }
+  52%, 88% { opacity: 0; transform: scale(0.92); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes rxnFadeB {
+  0%, 42% { opacity: 0; transform: scale(0.92); }
+  52%, 88% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.92); }
+}
+.rxn-label {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--cyan);
+}
+.rxn-b .rxn-label { color: var(--violet); }
+.rxn-mol {
+  width: 130px;
+  height: 150px;
+  position: relative;
+  border-radius: 10px;
+  background: #f4f8fb;
+  overflow: hidden;
+  cursor: grab;
+}
+.rxn-mol:active { cursor: grabbing; }
+.rxn-mol-fallback {
+  font-size: 11px;
+  color: #33475b;
+  padding: 8px;
+  word-break: break-all;
+  font-family: monospace;
+}
+.rxn-arrow {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+}
 .mol-chat-props { min-width: 0; flex: 1; }
 .mol-prop { display: flex; gap: 6px; font-size: 12px; margin-top: 3px; }
 .mol-prop dt { color: var(--muted); flex: 0 0 auto; }
@@ -1325,7 +1393,7 @@ async function streamAgentChat(text, onUpdate) {
 function visibleStreamText(acc) {
   let cut = acc.length;
   const upper = acc.toUpperCase();
-  for (const m of ["[MOL]", "[SUGGEST]"]) {
+  for (const m of ["[MOL]", "[RXN]", "[SUGGEST]"]) {
     const full = upper.indexOf(m);
     if (full >= 0) cut = Math.min(cut, full);
     for (let k = 1; k < m.length; k++) {
@@ -1509,19 +1577,23 @@ async function handleUserText(text) {
           bubble.innerHTML = fmtReply(visibleStreamText(acc));
           scrollChat();
         });
-        // 流结束后处理标记:[MOL] 分子结构、[SUGGEST] 推荐追问
+        // 流结束后处理标记:[MOL] 分子结构、[RXN] 反应演示、[SUGGEST] 推荐追问
         const molMarker = full.match(/\[MOL\]([\s\S]+?)\[\/MOL\]/i);
+        const rxnMarker = full.match(/\[RXN\]([\s\S]+?)\[\/RXN\]/i);
         const sugMarker = full.match(/\[SUGGEST\]([\s\S]+?)\[\/SUGGEST\]/i);
         replyText = full
           .replace(/\[MOL\][\s\S]+?\[\/MOL\]/gi, "")
+          .replace(/\[RXN\][\s\S]+?\[\/RXN\]/gi, "")
           .replace(/\[SUGGEST\][\s\S]+?\[\/SUGGEST\]/gi, "")
           .trim();
         let replyHtml = fmtReply(replyText);
         if (molMarker) replyHtml += moleculeCardHtml(await fetchMolecule(molMarker[1].trim()));
+        if (rxnMarker) replyHtml += reactionCardHtml(rxnMarker[1].trim());
         if (sugMarker) replyHtml += suggestChipsHtml(sugMarker[1].split("|"));
         bubble.innerHTML = replyHtml;
         typesetMath(msgEl);
         bubble.querySelectorAll(".mol-3d").forEach(initMol3D);
+        bubble.querySelectorAll(".rxn-stage").forEach(initReaction);
         scrollChat();
       } catch (e) {
         console.log("Agent 对话失败", e);
@@ -1704,6 +1776,55 @@ async function initMol3D(container) {
   } catch {
     showFallback();
   }
+}
+
+// ===== 化学反应演示卡片(反应物 ⇌ 生成物 循环变换 3D 球棍模型) =====
+function reactionCardHtml(rxnExpr) {
+  // 反应 SMILES:反应物>条件>生成物,取首尾两段,小数点分隔多个物质
+  const parts = rxnExpr.split(">");
+  const reactants = (parts[0] || "").split(".").map(s => s.trim()).filter(Boolean).slice(0, 3);
+  const products = (parts[parts.length - 1] || "").split(".").map(s => s.trim()).filter(Boolean).slice(0, 3);
+  if (reactants.length === 0 || products.length === 0) return "";
+  const molHtml = (list) => list.map(s =>
+    `<div class="rxn-mol" data-smiles="${escapeHtml(s)}"><div class="mol-3d-loading">加载中…</div></div>`).join("");
+  return `
+    <div class="rxn-stage">
+      <div class="rxn-layer rxn-a"><span class="rxn-label">反应物</span>${molHtml(reactants)}</div>
+      <div class="rxn-layer rxn-b"><span class="rxn-label">生成物</span>${molHtml(products)}</div>
+      <span class="rxn-arrow">⇌ 循环演示(系数见上方方程式)</span>
+    </div>`;
+}
+
+// 初始化反应演示:按 SMILES 从 PubChem 取 3D 坐标渲染小球棍查看器
+async function initReaction(stage) {
+  stage.querySelectorAll(".rxn-mol").forEach(async (el) => {
+    const smiles = el.dataset.smiles;
+    const showFallback = () => { el.innerHTML = `<div class="rxn-mol-fallback">${escapeHtml(smiles)}</div>`; };
+    if (!window.$3Dmol) { showFallback(); return; }
+    // SMILES 取 3D 坐标,失败则按名称再试(模型可能输出 CH4 这类非标准 SMILES)
+    let sdf = "";
+    for (const kind of ["smiles", "name"]) {
+      try {
+        const resp = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/${kind}/${encodeURIComponent(smiles)}/SDF?record_type=3d`);
+        if (resp.ok) {
+          const text = await resp.text();
+          if (text && text.length >= 50) { sdf = text; break; }
+        }
+      } catch {}
+    }
+    if (!sdf) { showFallback(); return; }
+    try {
+      el.innerHTML = "";
+      const viewer = window.$3Dmol.createViewer(el, { backgroundColor: "#f4f8fb" });
+      viewer.addModel(sdf, "sdf");
+      viewer.setStyle({}, { stick: { radius: 0.16 }, sphere: { scale: 0.3 } });
+      viewer.zoomTo();
+      viewer.spin("y", 0.5);
+      viewer.render();
+    } catch {
+      showFallback();
+    }
+  });
 }
 
 // 从用户消息中识别分子结构查询意图:/mol X、/分子 X、「X的结构式」「生成X的分子式图像」等

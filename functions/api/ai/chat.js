@@ -266,6 +266,7 @@ export async function onRequestPost(context) {
       (webContext
         ? '\n9) 下方附有联网检索结果,请优先依据它回答并自然注明来源(如"据 Wikipedia");若包含 PubChem 结构识别结果,说明该物质是什么、有何用途,并在回复末尾输出对应的 [MOL] 标记(使用识别结果中的 SMILES 或英文名)以便前端渲染结构图。'
         : '') +
+      '\n10) 当回复涉及具体化学反应(你写出了 \\ce 方程式)时,在回复末尾输出反应演示标记 [RXN]反应物SMILES>>生成物SMILES[/RXN]:反应物与生成物用合法 SMILES 书写,多个物质用小数点分隔(如 [RXN]CH4.O=O>>C(=O)=O.O[/RXN]),不含系数、条件和箭头;若不确定任一物质的合法 SMILES,则不要输出该标记;前端会渲染球棍模型动态演示。' +
       (newsDigest ? `\n\n今日化学新闻清单:\n${newsDigest}` : '') +
       (webContext ? `\n\n联网检索结果:\n${webContext}` : '') +
       (attachSection ? `\n\n用户附加的文献:\n${attachSection}` : '');
