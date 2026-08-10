@@ -22,25 +22,77 @@ export async function onRequestOptions() {
   return new Response(null, { headers: CORS_HEADERS });
 }
 
-// 抓取网页并提取正文文本(段落/标题/列表),失败返回空串
-async function fetchPageText(url) {
+// 粗提取:HTML → 纯文本(正则兜底用)
+function htmlToText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function fetchWithTimeout(url, options, ms) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 6000);
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+// 途径一:DOI 链接走官方 API(Zenodo / Crossref),稳定不怕反爬
+async function fetchViaDoiApi(url) {
+  const m = url.match(/doi\.org\/(10\.\d{4,9}\/\S+)/i);
+  if (!m) return '';
+  const doi = m[1].replace(/[.\s]+$/, '');
   try {
-    const resp = await fetch(url, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-    });
+    // Zenodo 数据集/预印本:Records API 含完整描述
+    const zm = doi.match(/^10\.5281\/zenodo\.(\d+)$/i);
+    if (zm) {
+      const resp = await fetchWithTimeout(`https://zenodo.org/api/records/${zm[1]}`, {
+        headers: { 'Accept': 'application/json' },
+      }, 6000);
+      if (resp.ok) {
+        const json = await resp.json();
+        const desc = htmlToText(json.metadata?.description || '');
+        const title = json.metadata?.title || '';
+        const text = (title + '\n' + desc).trim();
+        if (text.length > 50) return text.slice(0, 3000);
+      }
+      return '';
+    }
+    // 通用 DOI:Crossref 元数据(部分含摘要)
+    const resp = await fetchWithTimeout(`https://api.crossref.org/works/${encodeURIComponent(doi)}`, {
+      headers: { 'Accept': 'application/json' },
+    }, 6000);
+    if (resp.ok) {
+      const json = await resp.json();
+      const msg = json.message || {};
+      const abstract = htmlToText(msg.abstract || '');
+      const title = (msg.title || [])[0] || '';
+      const text = (title + '\n' + abstract).trim();
+      if (text.length > 50) return text.slice(0, 3000);
+    }
+  } catch {}
+  return '';
+}
+
+// 途径二:直接抓取网页,HTMLRewriter 提取正文;内容太少时正则全文兜底
+async function fetchDirect(url) {
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+  };
+  try {
+    const resp = await fetchWithTimeout(url, { redirect: 'follow', headers }, 6000);
     if (!resp.ok) return '';
     const contentType = resp.headers.get('content-type') || '';
     if (!contentType.includes('text/html')) return '';
     let text = '';
     const rewritten = new HTMLRewriter()
-      .on('p, h1, h2, h3, li', {
+      .on('p, h1, h2, h3, li, blockquote', {
         text(t) {
           text += t.text;
           if (t.lastInTextNode) text += '\n';
@@ -48,16 +100,24 @@ async function fetchPageText(url) {
       })
       .transform(resp);
     await rewritten.text(); // 消费流,触发提取
-    return text
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
-      .slice(0, 2500);
+    text = text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    if (text.length >= 200) return text.slice(0, 3000);
+    // 结构化提取内容太少:重新抓取原始 HTML 做全文粗提取
+    const raw = await fetchWithTimeout(url, { redirect: 'follow', headers }, 6000);
+    if (raw.ok) {
+      const fallback = htmlToText(await raw.text());
+      if (fallback.length > text.length) return fallback.slice(0, 3000);
+    }
+    return text;
   } catch {
     return '';
-  } finally {
-    clearTimeout(timer);
   }
+}
+
+// 抓取文献内容:DOI API 与直接抓取并行,取内容更长者
+async function fetchPageText(url) {
+  const [viaApi, direct] = await Promise.all([fetchViaDoiApi(url), fetchDirect(url)]);
+  return (viaApi.length >= direct.length ? viaApi : direct).slice(0, 3000);
 }
 
 export async function onRequestPost(context) {
