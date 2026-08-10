@@ -152,9 +152,10 @@ body::before {
   overflow-y: auto;
   border-radius: 18px;
   border: 1px solid rgba(125, 211, 252, 0.14);
-  background: rgba(3, 8, 20, 0.45);
-  backdrop-filter: blur(16px) saturate(120%);
-  -webkit-backdrop-filter: blur(16px) saturate(120%);
+  /* 高通透毛玻璃:让星空与漂浮分子透出来 */
+  background: rgba(3, 8, 20, 0.22);
+  backdrop-filter: blur(8px) saturate(125%);
+  -webkit-backdrop-filter: blur(8px) saturate(125%);
   box-shadow: 0 22px 70px rgba(0, 0, 0, 0.22);
 }
 .chat-inner {
@@ -247,7 +248,7 @@ body::before {
   flex: 0 0 auto;
   border-radius: 16px;
   border: 1px solid rgba(125, 211, 252, 0.12);
-  background: rgba(3, 8, 20, 0.4);
+  background: rgba(3, 8, 20, 0.28);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   max-width: 860px;
@@ -390,7 +391,7 @@ body::before {
   padding: 10px;
   border-radius: 16px;
   border: 1px solid rgba(167, 139, 250, 0.3);
-  background: rgba(8, 18, 34, 0.6);
+  background: rgba(8, 18, 34, 0.45);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   box-shadow: 0 0 24px rgba(167, 139, 250, 0.08);
