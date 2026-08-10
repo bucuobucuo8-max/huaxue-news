@@ -1056,7 +1056,7 @@ body.dragging { cursor: col-resize; user-select: none; }
         </div>
         <div class="sub-panel" id="subMolecule" hidden>
           <div class="mol-search">
-            <input id="molInput" type="text" placeholder="输入化合物:英文名 / 分子式 / SMILES,如 aspirin、C6H6、CCO" autocomplete="off">
+            <input id="molInput" type="text" placeholder="输入化合物:支持中文名(如 布洛芬)/ 英文名 / 分子式 / SMILES" autocomplete="off">
             <button id="molBtn">生成结构</button>
           </div>
           <div class="mol-examples" id="molExamples">
@@ -1065,6 +1065,7 @@ body.dragging { cursor: col-resize; user-select: none; }
             <button data-q="aspirin">阿司匹林</button>
             <button data-q="caffeine">咖啡因</button>
             <button data-q="C6H12O6">葡萄糖</button>
+            <button data-q="布洛芬">布洛芬(中文)</button>
           </div>
           <div class="molecule-stage">
             <div class="mol-img-wrap" id="molImgWrap">
@@ -1078,7 +1079,7 @@ body.dragging { cursor: col-resize; user-select: none; }
             </div>
             <div class="molecule-caption" id="molInfo">
               <b>分子结构可视化</b>
-              输入化合物英文名、分子式或 SMILES,点击「生成结构」,将调用 PubChem 渲染 2D 结构图与基本属性。
+              输入化合物中文名(如 布洛芬)、英文名、分子式或 SMILES,点击「生成结构」,将调用 PubChem 渲染 2D 结构图与基本属性。
             </div>
           </div>
         </div>
@@ -1560,7 +1561,37 @@ async function renderMolecule(query) {
   if (!query) return;
   molBtn.disabled = true;
   molBtn.textContent = "生成中…";
-  molInfo.innerHTML = `<b>查询中…</b>正在向 PubChem 请求「${escapeHtml(query)}」的结构数据。`;
+
+  // 中文名:先用 DeepSeek 转成英文名 + SMILES,再查 PubChem
+  let translatedNote = "";
+  if (/[一-龥]/.test(query)) {
+    molInfo.innerHTML = `<b>识别中…</b>正在用 AI 将「${escapeHtml(query)}」转换为标准化合物标识。`;
+    try {
+      const resp = await fetch("/api/ai/compound", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: query }),
+      });
+      const json = await resp.json();
+      if (json.code === 200 && json.data) {
+        const { english, smiles } = json.data;
+        translatedNote = `已自动翻译:「${escapeHtml(query)}」→ <b>${escapeHtml(english || smiles)}</b><br>`;
+        query = smiles || english; // SMILES 查询最精确
+      } else {
+        molBtn.disabled = false;
+        molBtn.textContent = "生成结构";
+        molInfo.innerHTML = `<b>无法识别「${escapeHtml(query)}」</b>请换用更规范的化合物名称,或直接输入英文名 / 分子式 / SMILES。`;
+        return;
+      }
+    } catch {
+      molBtn.disabled = false;
+      molBtn.textContent = "生成结构";
+      molInfo.innerHTML = `<b>翻译服务暂不可用</b>请改用英文名 / 分子式 / SMILES 直接查询。`;
+      return;
+    }
+  }
+
+  molInfo.innerHTML = `${translatedNote}<b>查询中…</b>正在向 PubChem 请求结构数据。`;
   const kinds = molQueryKinds(query);
   let hit = null;
   for (const kind of kinds) {
@@ -1582,6 +1613,7 @@ async function renderMolecule(query) {
   molImgWrap.innerHTML = `<img src="${imgUrl}" alt="${escapeHtml(query)} 结构式">`;
   const p = hit.prop;
   molInfo.innerHTML = `
+    ${translatedNote}
     <b>${escapeHtml(p.IUPACName || query)}</b>
     <dl>
       <div class="mol-prop"><dt>分子式</dt><dd>${escapeHtml(p.MolecularFormula || "-")}</dd></div>
