@@ -243,39 +243,7 @@ body::before {
 .cite-meta { font-size: 12px; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
 .cite-meta .cite-src { color: var(--cyan); }
 
-/* ================= 附属子面板槽 ================= */
-.subdock {
-  flex: 0 0 auto;
-  border-radius: 16px;
-  border: 1px solid rgba(125, 211, 252, 0.12);
-  background: rgba(3, 8, 20, 0.28);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  max-width: 860px;
-  width: 100%;
-  margin: 0 auto;
-}
-.subdock-tabs { display: flex; gap: 6px; padding: 8px; }
-.sub-tab {
-  flex: 1;
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: rgba(226, 246, 255, 0.55);
-  border-radius: 10px;
-  padding: 8px 4px;
-  font-size: 12.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  white-space: nowrap;
-}
-.sub-tab:hover { color: #fff; }
-.sub-tab.active { color: #fff; background: linear-gradient(135deg, rgba(103, 232, 249, 0.85), rgba(167, 139, 250, 0.85)); }
-.sub-panel { padding: 6px 14px 14px; }
-.sub-panel[hidden] { display: none; }
-
-/* 分子结构卡片(对话内渲染) */
+/* ================= 分子结构卡片(对话内渲染) ================= */
 @keyframes molSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .mol-chat { display: flex; align-items: center; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
 .mol-img-wrap {
@@ -357,16 +325,6 @@ body::before {
 .mol-prop { display: flex; gap: 6px; font-size: 12px; margin-top: 3px; }
 .mol-prop dt { color: var(--muted); flex: 0 0 auto; }
 .mol-prop dd { color: #e0f2fe; font-weight: 600; word-break: break-all; margin: 0; }
-
-/* 文献引用面板 */
-.lit-item { padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(167, 139, 250, 0.2); background: rgba(8, 18, 34, 0.45); margin-bottom: 8px; }
-.lit-item a { color: #e0f2fe; font-size: 13.5px; font-weight: 600; text-decoration: none; line-height: 1.5; }
-.lit-item a:hover { color: var(--cyan); }
-.lit-meta { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
-.sub-empty { font-size: 13px; color: var(--muted); padding: 10px 4px; }
-
-/* 热点标签面板 */
-.agent-tag-actions { margin-bottom: 10px; }
 
 /* 附加文献栏(拖拽/点击手柄后显示) */
 .attach-bar {
@@ -1050,6 +1008,216 @@ body.dragging { cursor: col-resize; user-select: none; }
 .sk-text.short { width: 55%; }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
+/* ================= 今日分子开机卡 & 元素周期表 ================= */
+.motd-overlay, .pte-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(1, 2, 8, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  padding: 16px;
+}
+.motd-overlay[hidden], .pte-overlay[hidden] { display: none; }
+.motd-card {
+  position: relative;
+  width: min(92vw, 560px);
+  border-radius: 20px;
+  border: 1px solid rgba(103, 232, 249, 0.35);
+  background: linear-gradient(145deg, rgba(8, 18, 34, 0.85), rgba(10, 12, 34, 0.8));
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5), 0 0 40px rgba(103, 232, 249, 0.12);
+  padding: 22px 24px;
+  animation: motdIn 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+@keyframes motdIn {
+  from { opacity: 0; transform: translateY(24px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+.motd-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid rgba(251, 113, 133, 0.35);
+  background: rgba(251, 113, 133, 0.1);
+  color: var(--coral);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  z-index: 2;
+}
+.motd-close:hover { background: rgba(251, 113, 133, 0.3); color: #fff; }
+.motd-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--cyan);
+  margin-bottom: 14px;
+}
+.motd-body { display: flex; gap: 18px; align-items: center; }
+.motd-3d {
+  flex: 0 0 auto;
+  width: 190px;
+  height: 190px;
+  border-radius: 14px;
+  background: #f4f8fb;
+  border: 1px solid rgba(103, 232, 249, 0.35);
+  box-shadow: 0 0 24px rgba(103, 232, 249, 0.15);
+  overflow: hidden;
+  position: relative;
+  cursor: grab;
+}
+.motd-3d:active { cursor: grabbing; }
+.motd-3d img { max-width: 92%; max-height: 92%; margin: 4%; }
+.motd-info { min-width: 0; }
+.motd-info b {
+  display: block;
+  font-size: 20px;
+  margin-bottom: 8px;
+  background: linear-gradient(90deg, #cffafe, #a78bfa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.motd-info p { font-size: 13px; line-height: 1.8; color: var(--muted); margin-bottom: 14px; }
+.motd-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.motd-ask {
+  appearance: none;
+  border: none;
+  border-radius: 10px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(135deg, #67e8f9, #a78bfa);
+  transition: box-shadow 0.25s ease;
+}
+.motd-ask:hover { box-shadow: 0 6px 18px rgba(103, 232, 249, 0.4); }
+.motd-ok {
+  appearance: none;
+  border: 1px solid rgba(103, 232, 249, 0.35);
+  background: rgba(103, 232, 249, 0.1);
+  color: var(--cyan);
+  border-radius: 10px;
+  padding: 9px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.motd-ok:hover { background: rgba(103, 232, 249, 0.2); }
+
+/* 周期表 */
+.pte-card {
+  position: relative;
+  width: min(96vw, 1080px);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+  border: 1px solid rgba(103, 232, 249, 0.3);
+  background: linear-gradient(145deg, rgba(8, 18, 34, 0.9), rgba(10, 12, 34, 0.85));
+  backdrop-filter: blur(18px) saturate(130%);
+  -webkit-backdrop-filter: blur(18px) saturate(130%);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
+  padding: 18px 20px;
+}
+.pte-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.pte-head h3 {
+  font-size: 17px;
+  font-weight: 800;
+  background: linear-gradient(90deg, #7dd3fc, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.pte-head .motd-close { position: static; }
+.pte-scroll { overflow: auto; flex: 1; min-height: 0; }
+.pte-grid {
+  display: grid;
+  grid-template-columns: repeat(18, 46px);
+  grid-auto-rows: 46px;
+  gap: 3px;
+  width: max-content;
+  margin: 0 auto;
+}
+.pte-el {
+  appearance: none;
+  border: 1px solid;
+  border-radius: 7px;
+  background: rgba(8, 18, 34, 0.6);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  color: var(--text);
+  line-height: 1.1;
+}
+.pte-el:hover { transform: scale(1.18); z-index: 3; box-shadow: 0 0 14px currentColor; }
+.pte-el i { font-style: normal; font-size: 8px; opacity: 0.65; align-self: flex-start; padding-left: 3px; }
+.pte-el b { font-size: 14px; font-weight: 800; }
+.pte-el span { font-size: 9px; opacity: 0.85; }
+.pte-el.cat-alkali { border-color: rgba(251,113,133,.5); color: #fb7185; }
+.pte-el.cat-alkaline { border-color: rgba(251,191,36,.5); color: #fbbf24; }
+.pte-el.cat-transition { border-color: rgba(96,165,250,.5); color: #60a5fa; }
+.pte-el.cat-post { border-color: rgba(52,211,153,.5); color: #34d399; }
+.pte-el.cat-metalloid { border-color: rgba(163,230,53,.5); color: #a3e635; }
+.pte-el.cat-nonmetal { border-color: rgba(103,232,249,.55); color: #67e8f9; }
+.pte-el.cat-halogen { border-color: rgba(244,114,182,.5); color: #f472b6; }
+.pte-el.cat-noble { border-color: rgba(167,139,250,.55); color: #a78bfa; }
+.pte-el.cat-lanthanide { border-color: rgba(196,181,253,.5); color: #c4b5fd; }
+.pte-el.cat-actinide { border-color: rgba(240,171,252,.5); color: #f0abfc; }
+.pte-gap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  color: var(--muted);
+  border: 1px dashed rgba(148, 163, 184, 0.3);
+  border-radius: 7px;
+  text-align: center;
+  line-height: 1.2;
+}
+.pte-detail {
+  margin-top: 12px;
+  min-height: 52px;
+  border-radius: 12px;
+  border: 1px solid rgba(103, 232, 249, 0.2);
+  background: rgba(8, 18, 34, 0.5);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.pte-hint { font-size: 12.5px; color: var(--muted); }
+.pte-detail .pte-sym { font-size: 26px; font-weight: 900; color: var(--cyan); }
+.pte-detail .pte-name { font-size: 15px; font-weight: 700; }
+.pte-detail .pte-meta { font-size: 12px; color: var(--muted); }
+.pte-ask {
+  appearance: none;
+  border: none;
+  margin-left: auto;
+  border-radius: 9px;
+  padding: 8px 16px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(135deg, #67e8f9, #a78bfa);
+  white-space: nowrap;
+}
+.pte-ask:hover { box-shadow: 0 4px 14px rgba(103, 232, 249, 0.35); }
+
 /* ================= 移动端:Agent 全屏 + 新闻抽屉 ================= */
 @media (max-width: 768px) {
   .agent { padding: 12px 10px; }
@@ -1092,6 +1260,7 @@ body.dragging { cursor: col-resize; user-select: none; }
     <div class="brand"><span class="brand-dot"></span>CHEMISTRY AGENT · 化学智能体工作台</div>
     <div class="topbar-actions">
       <span class="stats-chip" id="statsChip">加载中…</span>
+      <button class="news-toggle" id="pteToggle">🧪 周期表</button>
       <button class="news-toggle" id="newsToggle">📰 新闻文献</button>
     </div>
   </header>
@@ -1101,23 +1270,6 @@ body.dragging { cursor: col-resize; user-select: none; }
     <main class="agent" id="agentPanel">
       <div class="chat-scroll" id="chatScroll">
         <div class="chat-inner" id="chatInner"></div>
-      </div>
-
-      <!-- 附属子面板槽 -->
-      <div class="subdock">
-        <div class="subdock-tabs">
-          <button class="sub-tab" data-sub="citation">📚 文献引用</button>
-          <button class="sub-tab" data-sub="tags">🏷️ 热点标签</button>
-        </div>
-        <div class="sub-panel" id="subCitation" hidden>
-          <div id="litList"><div class="sub-empty">文献加载中…</div></div>
-        </div>
-        <div class="sub-panel" id="subTags" hidden>
-          <div class="agent-tag-actions">
-            <button class="ai-gen-btn" id="agentTagsBtn">🏷️ 提取今日化学热点标签</button>
-          </div>
-          <div class="ai-tag-cloud" id="agentTagCloud" style="display:none;"></div>
-        </div>
       </div>
 
       <!-- 附加文献栏 -->
@@ -1201,6 +1353,39 @@ body.dragging { cursor: col-resize; user-select: none; }
 
 <!-- 选中文本快捷解读按钮 -->
 <button class="sel-pop" id="selPop" hidden>✨ 发送给 Agent 解读</button>
+
+<!-- 今日分子开机卡 -->
+<div class="motd-overlay" id="motdOverlay" hidden>
+  <div class="motd-card">
+    <button class="motd-close" id="motdClose" title="关闭">✕</button>
+    <div class="motd-title">🧪 今日分子 · Molecule of the Day</div>
+    <div class="motd-body">
+      <div class="motd-3d" id="motd3d"><div class="mol-3d-loading">3D 加载中…</div></div>
+      <div class="motd-info">
+        <b id="motdName"></b>
+        <p id="motdFact"></p>
+        <div class="motd-actions">
+          <button class="motd-ask" id="motdAsk">问问 Agent →</button>
+          <button class="motd-ok" id="motdOk">开始探索</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 元素周期表面板 -->
+<div class="pte-overlay" id="pteOverlay" hidden>
+  <div class="pte-card">
+    <div class="pte-head">
+      <h3>🧪 元素周期表</h3>
+      <button class="motd-close" id="pteClose" title="关闭">✕</button>
+    </div>
+    <div class="pte-scroll">
+      <div class="pte-grid" id="pteGrid"></div>
+    </div>
+    <div class="pte-detail" id="pteDetail"><span class="pte-hint">点击任意元素查看详情,可一键向 Agent 提问。</span></div>
+  </div>
+</div>
 
 <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
 <script src="https://3Dmol.org/build/3Dmol-min.js" async></script>
@@ -1629,49 +1814,7 @@ chatInner.addEventListener("click", (e) => {
   handleUserText(chip.dataset.q);
 });
 
-// ----- 附属子面板槽切换 -----
-const subPanels = { citation: $("subCitation"), tags: $("subTags") };
-function closeSubPanels() {
-  Object.values(subPanels).forEach(p => { p.hidden = true; });
-  document.querySelectorAll(".sub-tab").forEach(t => t.classList.remove("active"));
-}
-document.querySelectorAll(".sub-tab").forEach(tab => {
-  tab.addEventListener("click", () => {
-    const name = tab.dataset.sub;
-    const panel = subPanels[name];
-    const willOpen = panel.hidden;
-    closeSubPanels();
-    if (willOpen) {
-      tab.classList.add("active");
-      panel.hidden = false;
-      if (name === "citation") renderLitPanel();
-    }
-  });
-});
-// 自动收起:点击面板槽以外的区域(且没有正在选中文本)时关闭;发送消息时也关闭
-document.addEventListener("click", (e) => {
-  if (e.target.closest(".subdock")) return;
-  const sel = window.getSelection();
-  if (sel && !sel.isCollapsed) return;
-  closeSubPanels();
-});
-$("composer").addEventListener("submit", closeSubPanels);
-
-// 文献引用预览:取研究类新闻以引用格式展示
-function renderLitPanel() {
-  const litList = $("litList");
-  const items = newsData.filter(n => n.type === "research").slice(0, 5);
-  const list = items.length > 0 ? items : newsData.slice(0, 5);
-  if (list.length === 0) {
-    litList.innerHTML = '<div class="sub-empty">暂无文献数据。</div>';
-    return;
-  }
-  litList.innerHTML = list.map((n, i) => `
-    <div class="lit-item">
-      <a href="${n.url || "#"}" target="_blank" rel="noopener noreferrer">[${i + 1}] ${escapeHtml(displayName(n))}</a>
-      <div class="lit-meta">${escapeHtml(n.source || "")} · ${escapeHtml(n.time || "")}</div>
-    </div>`).join("");
-}
+// (冗余清理:原"文献引用/热点标签"子面板已移除——文献经 /news 指令以引用卡片呈现,热点标签在新闻面板 AI 助手中)
 
 // ===== 分子结构查询(PubChem PUG REST,免费无密钥;中文名经 DeepSeek 转换) =====
 const PUBCHEM = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound";
@@ -1829,51 +1972,6 @@ function parseMoleculeQuery(text) {
   }
   return null;
 }
-
-// Agent 侧热点标签
-let agentTags = [];
-$("agentTagsBtn").addEventListener("click", async () => {
-  if (newsData.length === 0) return;
-  const cloud = $("agentTagCloud");
-  if (agentTags.length > 0) {
-    cloud.style.display = cloud.style.display === "none" ? "flex" : "none";
-    return;
-  }
-  $("agentTagsBtn").disabled = true;
-  $("agentTagsBtn").textContent = "🏷️ 分析中…";
-  cloud.style.display = "flex";
-  cloud.innerHTML = '<div class="ai-brief-loading">DeepSeek 正在提炼热点…</div>';
-  try {
-    const resp = await fetch("/api/ai/hottags", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ news: newsData.map(n => ({ title: n.title, summary: n.summary, type: n.type })) }),
-    });
-    const json = await resp.json();
-    if (json.code === 200 && json.data && json.data.length > 0) {
-      agentTags = json.data;
-      cloud.innerHTML = agentTags.map((t, i) =>
-        `<button class="tag-chip" data-agenttag="${i}">${escapeHtml(t.tag)}<span class="tag-count">${t.indices.length}</span></button>`).join("");
-    } else { cloud.style.display = "none"; }
-  } catch { cloud.style.display = "none"; }
-  $("agentTagsBtn").disabled = false;
-  $("agentTagsBtn").textContent = "🏷️ 提取今日化学热点标签";
-});
-// 点击 Agent 侧标签:唤起新闻面板并按标签筛选
-$("agentTagCloud").addEventListener("click", (e) => {
-  const chip = e.target.closest(".tag-chip");
-  if (!chip) return;
-  const tag = agentTags[parseInt(chip.dataset.agenttag)];
-  if (!tag) return;
-  searchIndices = tag.indices;
-  searchQueryText = "tag:" + tag.tag;
-  activeFilters.clear();
-  document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-  document.querySelector('[data-filter="all"]').classList.add("active");
-  aiSearchClear.style.display = "inline-block";
-  renderNews("all");
-  openNewsPanel();
-  addMessage("ai", `已按热点标签「<b>${escapeHtml(tag.tag)}</b>」筛选相关新闻,共 ${tag.indices.length} 条:` + citationCardsHtml(tag.indices.map(i => newsData[i]).filter(Boolean).slice(0, 3)));
-});
 
 /* =========================================================
    新闻子面板:开关 + 拖拽
@@ -2668,6 +2766,111 @@ document.querySelectorAll(".ai-tab").forEach(tab => {
 })();
 
 /* =========================================================
+   今日分子开机卡
+   ========================================================= */
+const MOTD_LIST = [
+  { q: "caffeine", name: "咖啡因", fact: "它通过阻断腺苷受体欺骗你的大脑——困意信号被拦截,所以你感觉清醒。" },
+  { q: "glucose", name: "葡萄糖", fact: "细胞的通用能量货币,你的大脑每天消耗约 120 克。" },
+  { q: "urea", name: "尿素", fact: "1828 年维勒人工合成尿素,首次打破「有机物只能由生命制造」的学说。" },
+  { q: "benzene", name: "苯", fact: "凯库勒自称梦见蛇咬住自己的尾巴,才想出苯的环状结构。" },
+  { q: "aspirin", name: "阿司匹林", fact: "从柳树皮到百年神药,至今全球每年消耗约 4 万吨。" },
+  { q: "ibuprofen", name: "布洛芬", fact: "传说研发团队的亚当斯在宿醉后亲自试药,验证了它的止痛效果。" },
+  { q: "ascorbic acid", name: "维生素 C", fact: "人类是少数不能自身合成维生素 C 的哺乳动物之一。" },
+  { q: "dopamine", name: "多巴胺", fact: "让人上瘾的不是快乐本身,而是对快乐的期待——它主管「奖励预期」。" },
+  { q: "serotonin", name: "血清素", fact: "约 90% 的血清素其实在肠道产生,而不是大脑。" },
+  { q: "ethanol", name: "乙醇", fact: "人类酿酒史超过 9000 年,酵母把糖变成它的过程叫发酵。" },
+  { q: "menthol", name: "薄荷醇", fact: "它激活的是冷觉受体 TRPM8——清凉感其实是一种神经错觉。" },
+  { q: "methane", name: "甲烷", fact: "火星大气中反复检测到微量甲烷,它的来源至今是谜。" },
+  { q: "penicillin", name: "青霉素", fact: "弗莱明度假前忘了盖培养皿,霉菌替他完成了诺奖级发现。" },
+  { q: "ozone", name: "臭氧", fact: "在地面附近是污染物,在平流层却是地球的「防晒霜」。" },
+];
+const motdOverlay = $("motdOverlay");
+let motdCurrent = null;
+
+async function showMotd() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (localStorage.getItem("motd_shown") === today) return;
+  localStorage.setItem("motd_shown", today);
+  motdCurrent = MOTD_LIST[Math.floor(Date.now() / 86400000) % MOTD_LIST.length];
+  $("motdName").textContent = motdCurrent.name;
+  $("motdFact").textContent = motdCurrent.fact;
+  motdOverlay.hidden = false;
+  // 3D 模型(PubChem 按名称取 3D 坐标,失败回退 2D 图)
+  const box = $("motd3d");
+  try {
+    if (!window.$3Dmol) throw new Error("no lib");
+    const resp = await fetch(`${PUBCHEM}/name/${encodeURIComponent(motdCurrent.q)}/SDF?record_type=3d`);
+    if (!resp.ok) throw new Error("no 3d");
+    const sdf = await resp.text();
+    if (!sdf || sdf.length < 50) throw new Error("empty");
+    box.innerHTML = "";
+    const viewer = window.$3Dmol.createViewer(box, { backgroundColor: "#f4f8fb" });
+    viewer.addModel(sdf, "sdf");
+    viewer.setStyle({}, { stick: { radius: 0.15 }, sphere: { scale: 0.3 } });
+    viewer.zoomTo();
+    viewer.spin("y", 0.5);
+    viewer.render();
+  } catch {
+    box.innerHTML = `<img src="${PUBCHEM}/name/${encodeURIComponent(motdCurrent.q)}/PNG" alt="${escapeHtml(motdCurrent.name)} 结构式">`;
+  }
+}
+$("motdClose").addEventListener("click", () => { motdOverlay.hidden = true; });
+$("motdOk").addEventListener("click", () => { motdOverlay.hidden = true; });
+motdOverlay.addEventListener("click", (e) => { if (e.target === motdOverlay) motdOverlay.hidden = true; });
+$("motdAsk").addEventListener("click", () => {
+  motdOverlay.hidden = true;
+  if (motdCurrent) handleUserText(`介绍一下${motdCurrent.name}:它是什么、有什么用途和有趣的性质?`);
+});
+
+/* =========================================================
+   元素周期表
+   ========================================================= */
+// [原子序数, 符号, 中文名, 相对原子质量, 类别, 族x(1-18), 周期y(镧系9/锕系10)]
+const PTE_ELEMENTS = [
+[1,"H","氢",1.008,"nonmetal",1,1],[2,"He","氦",4.003,"noble",18,1],
+[3,"Li","锂",6.94,"alkali",1,2],[4,"Be","铍",9.012,"alkaline",2,2],[5,"B","硼",10.81,"metalloid",13,2],[6,"C","碳",12.01,"nonmetal",14,2],[7,"N","氮",14.01,"nonmetal",15,2],[8,"O","氧",16.00,"nonmetal",16,2],[9,"F","氟",19.00,"halogen",17,2],[10,"Ne","氖",20.18,"noble",18,2],
+[11,"Na","钠",22.99,"alkali",1,3],[12,"Mg","镁",24.31,"alkaline",2,3],[13,"Al","铝",26.98,"post",13,3],[14,"Si","硅",28.09,"metalloid",14,3],[15,"P","磷",30.97,"nonmetal",15,3],[16,"S","硫",32.06,"nonmetal",16,3],[17,"Cl","氯",35.45,"halogen",17,3],[18,"Ar","氩",39.95,"noble",18,3],
+[19,"K","钾",39.10,"alkali",1,4],[20,"Ca","钙",40.08,"alkaline",2,4],[21,"Sc","钪",44.96,"transition",3,4],[22,"Ti","钛",47.87,"transition",4,4],[23,"V","钒",50.94,"transition",5,4],[24,"Cr","铬",52.00,"transition",6,4],[25,"Mn","锰",54.94,"transition",7,4],[26,"Fe","铁",55.85,"transition",8,4],[27,"Co","钴",58.93,"transition",9,4],[28,"Ni","镍",58.69,"transition",10,4],[29,"Cu","铜",63.55,"transition",11,4],[30,"Zn","锌",65.38,"transition",12,4],[31,"Ga","镓",69.72,"post",13,4],[32,"Ge","锗",72.63,"metalloid",14,4],[33,"As","砷",74.92,"metalloid",15,4],[34,"Se","硒",78.97,"nonmetal",16,4],[35,"Br","溴",79.90,"halogen",17,4],[36,"Kr","氪",83.80,"noble",18,4],
+[37,"Rb","铷",85.47,"alkali",1,5],[38,"Sr","锶",87.62,"alkaline",2,5],[39,"Y","钇",88.91,"transition",3,5],[40,"Zr","锆",91.22,"transition",4,5],[41,"Nb","铌",92.91,"transition",5,5],[42,"Mo","钼",95.95,"transition",6,5],[43,"Tc","锝",98,"transition",7,5],[44,"Ru","钌",101.1,"transition",8,5],[45,"Rh","铑",102.9,"transition",9,5],[46,"Pd","钯",106.4,"transition",10,5],[47,"Ag","银",107.9,"transition",11,5],[48,"Cd","镉",112.4,"transition",12,5],[49,"In","铟",114.8,"post",13,5],[50,"Sn","锡",118.7,"post",14,5],[51,"Sb","锑",121.8,"metalloid",15,5],[52,"Te","碲",127.6,"metalloid",16,5],[53,"I","碘",126.9,"halogen",17,5],[54,"Xe","氙",131.3,"noble",18,5],
+[55,"Cs","铯",132.9,"alkali",1,6],[56,"Ba","钡",137.3,"alkaline",2,6],[72,"Hf","铪",178.5,"transition",4,6],[73,"Ta","钽",180.9,"transition",5,6],[74,"W","钨",183.8,"transition",6,6],[75,"Re","铼",186.2,"transition",7,6],[76,"Os","锇",190.2,"transition",8,6],[77,"Ir","铱",192.2,"transition",9,6],[78,"Pt","铂",195.1,"transition",10,6],[79,"Au","金",197.0,"transition",11,6],[80,"Hg","汞",200.6,"transition",12,6],[81,"Tl","铊",204.4,"post",13,6],[82,"Pb","铅",207.2,"post",14,6],[83,"Bi","铋",209.0,"post",15,6],[84,"Po","钋",209,"post",16,6],[85,"At","砹",210,"halogen",17,6],[86,"Rn","氡",222,"noble",18,6],
+[87,"Fr","钫",223,"alkali",1,7],[88,"Ra","镭",226,"alkaline",2,7],[104,"Rf","鑪",267,"transition",4,7],[105,"Db","𨧀",268,"transition",5,7],[106,"Sg","𨭎",269,"transition",6,7],[107,"Bh","𨨏",270,"transition",7,7],[108,"Hs","𨭆",277,"transition",8,7],[109,"Mt","䥑",278,"transition",9,7],[110,"Ds","鐽",281,"transition",10,7],[111,"Rg","錀",282,"transition",11,7],[112,"Cn","鎶",285,"transition",12,7],[113,"Nh","鉨",286,"post",13,7],[114,"Fl","鈇",289,"post",14,7],[115,"Mc","鏌",290,"post",15,7],[116,"Lv","鉝",293,"post",16,7],[117,"Ts","鿬",294,"halogen",17,7],[118,"Og","鿫",294,"noble",18,7],
+[57,"La","镧",138.9,"lanthanide",3,9],[58,"Ce","铈",140.1,"lanthanide",4,9],[59,"Pr","镨",140.9,"lanthanide",5,9],[60,"Nd","钕",144.2,"lanthanide",6,9],[61,"Pm","钷",145,"lanthanide",7,9],[62,"Sm","钐",150.4,"lanthanide",8,9],[63,"Eu","铕",152.0,"lanthanide",9,9],[64,"Gd","钆",157.3,"lanthanide",10,9],[65,"Tb","铽",158.9,"lanthanide",11,9],[66,"Dy","镝",162.5,"lanthanide",12,9],[67,"Ho","钬",164.9,"lanthanide",13,9],[68,"Er","铒",167.3,"lanthanide",14,9],[69,"Tm","铥",168.9,"lanthanide",15,9],[70,"Yb","镱",173.0,"lanthanide",16,9],[71,"Lu","镥",175.0,"lanthanide",17,9],
+[89,"Ac","锕",227,"actinide",3,10],[90,"Th","钍",232.0,"actinide",4,10],[91,"Pa","镤",231.0,"actinide",5,10],[92,"U","铀",238.0,"actinide",6,10],[93,"Np","镎",237,"actinide",7,10],[94,"Pu","钚",244,"actinide",8,10],[95,"Am","镅",243,"actinide",9,10],[96,"Cm","锔",247,"actinide",10,10],[97,"Bk","锫",247,"actinide",11,10],[98,"Cf","锎",251,"actinide",12,10],[99,"Es","锿",252,"actinide",13,10],[100,"Fm","镄",257,"actinide",14,10],[101,"Md","钔",258,"actinide",15,10],[102,"No","锘",259,"actinide",16,10],[103,"Lr","铹",266,"actinide",17,10],
+];
+const PTE_CAT_LABEL = { alkali: "碱金属", alkaline: "碱土金属", transition: "过渡金属", post: "后过渡金属", metalloid: "类金属", nonmetal: "非金属", halogen: "卤素", noble: "稀有气体", lanthanide: "镧系", actinide: "锕系" };
+const pteOverlay = $("pteOverlay");
+let pteCurrent = null;
+
+(function buildPteGrid() {
+  const grid = $("pteGrid");
+  let html = `<div class="pte-gap" style="grid-column:3;grid-row:6;">57-71<br>镧系</div><div class="pte-gap" style="grid-column:3;grid-row:7;">89-103<br>锕系</div>`;
+  html += PTE_ELEMENTS.map(([z, sym, cn, mass, cat, x, y]) =>
+    `<button class="pte-el cat-${cat}" style="grid-column:${x};grid-row:${y};" data-z="${z}" title="${z} ${cn} ${sym}"><i>${z}</i><b>${sym}</b><span>${cn}</span></button>`
+  ).join("");
+  grid.innerHTML = html;
+})();
+$("pteGrid").addEventListener("click", (e) => {
+  const btn = e.target.closest(".pte-el");
+  if (!btn) return;
+  pteCurrent = PTE_ELEMENTS.find(el => el[0] === parseInt(btn.dataset.z));
+  if (!pteCurrent) return;
+  const [z, sym, cn, mass, cat] = pteCurrent;
+  $("pteDetail").innerHTML = `
+    <span class="pte-sym">${sym}</span>
+    <span><span class="pte-name">${cn}</span><br><span class="pte-meta">原子序数 ${z} · 相对原子质量 ${mass} · ${PTE_CAT_LABEL[cat] || cat}</span></span>
+    <button class="pte-ask">问 Agent 这个元素 →</button>`;
+});
+$("pteDetail").addEventListener("click", (e) => {
+  if (!e.target.closest(".pte-ask") || !pteCurrent) return;
+  const [, sym, cn] = pteCurrent;
+  pteOverlay.hidden = true;
+  handleUserText(`介绍一下${cn}(${sym})元素:基本性质、常见化合物和有趣的应用。`);
+});
+$("pteToggle").addEventListener("click", () => { pteOverlay.hidden = false; });
+$("pteClose").addEventListener("click", () => { pteOverlay.hidden = true; });
+pteOverlay.addEventListener("click", (e) => { if (e.target === pteOverlay) pteOverlay.hidden = true; });
+
+/* =========================================================
    初始化
    ========================================================= */
 (async function init() {
@@ -2684,6 +2887,8 @@ document.querySelectorAll(".ai-tab").forEach(tab => {
   renderNews("all");
   trackVisitor();
   loadRanking();
+  // 今日分子开机卡(每天首次打开显示一次,延迟一点让 3Dmol 库就绪)
+  setTimeout(showMotd, 900);
 })();
 </script>
 </body>
