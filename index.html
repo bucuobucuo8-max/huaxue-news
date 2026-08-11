@@ -1575,8 +1575,15 @@ function renderAttachBar() {
 attachBar.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-rm]");
   if (!btn) return;
-  attachedArticles.splice(parseInt(btn.dataset.rm), 1);
+  const removed = attachedArticles.splice(parseInt(btn.dataset.rm), 1)[0];
   renderAttachBar();
+  // 同步知识库:同 URL 条目取消携带(否则发送进过知识库后,后续对话仍会读取它)
+  if (removed && removed.url) {
+    const k = knowledgeBase.find(x => x.url === removed.url);
+    if (k && k.checked) { k.checked = false; saveKB(); renderKBList(); }
+  }
+  // 在对话区明确反馈移除成功,避免"看起来没删掉"
+  if (removed) addMessage("ai", `<span class="bubble-hint">已移除附加文献《${escapeHtml(displayName(removed))}》,后续对话将不再携带它。</span>`);
 });
 function attachArticle(item) {
   if (!item) return;
