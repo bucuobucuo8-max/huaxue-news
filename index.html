@@ -702,7 +702,6 @@ body.dragging { cursor: col-resize; user-select: none; }
 .ranking-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
 .ranking-source { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ranking-count { color: var(--coral); font-weight: 600; }
-.ranking-meta .translate-btn { margin-left: 0; padding: 1px 8px; font-size: 10px; border-radius: 6px; }
 .flame-icon { position: absolute; top: -6px; right: -2px; width: 16px; height: 20px; pointer-events: none; z-index: 5; }
 .flame-icon::before {
   content: '';
@@ -722,112 +721,7 @@ body.dragging { cursor: col-resize; user-select: none; }
   100% { transform: translateX(-50%) scale(1.1, 1.15) rotate(2deg); }
 }
 
-/* AI 助手(Tab) */
-.ai-section { margin-bottom: 18px; }
-.ai-header h3 {
-  font-size: 15px;
-  font-weight: 700;
-  margin-bottom: 10px;
-  background: linear-gradient(90deg, #a78bfa, #67e8f9);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-.ai-tabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding: 4px;
-  border-radius: 12px;
-  background: rgba(3, 10, 22, 0.5);
-  border: 1px solid rgba(103, 232, 249, 0.1);
-}
-.ai-tab {
-  flex: 1;
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: rgba(226, 246, 255, 0.6);
-  border-radius: 8px;
-  padding: 8px 4px;
-  font-size: 11.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  white-space: nowrap;
-}
-.ai-tab:hover { color: #fff; }
-.ai-tab.active { color: #fff; background: linear-gradient(135deg, #a78bfa, #67e8f9); }
-.ai-panel[hidden] { display: none; }
-.ai-gen-btn {
-  appearance: none;
-  width: 100%;
-  margin-bottom: 12px;
-  border: 1px solid rgba(167, 139, 250, 0.4);
-  background: rgba(167, 139, 250, 0.14);
-  color: var(--violet);
-  border-radius: 12px;
-  padding: 10px 18px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-.ai-gen-btn:hover:not(:disabled) { color: #fff; background: linear-gradient(135deg, #a78bfa, #67e8f9); border-color: transparent; box-shadow: 0 8px 24px rgba(167, 139, 250, 0.3); }
-.ai-gen-btn:disabled { opacity: 0.6; cursor: wait; }
-.ai-desc { font-size: 12.5px; color: rgba(210, 232, 255, 0.5); margin-bottom: 12px; line-height: 1.6; }
-.ai-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
-.ai-card {
-  position: relative;
-  display: flex;
-  gap: 12px;
-  padding: 14px;
-  border-radius: 14px;
-  background: var(--card-bg);
-  border: 1px solid rgba(167, 139, 250, 0.22);
-  transition: transform 0.3s ease, border-color 0.3s ease;
-}
-.ai-card:hover { transform: translateY(-2px); border-color: rgba(167, 139, 250, 0.5); }
-.ai-card-rank {
-  flex: 0 0 auto;
-  font-size: 18px;
-  font-weight: 800;
-  background: linear-gradient(135deg, #a78bfa, #67e8f9);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-.ai-card-body { flex: 1; min-width: 0; }
-.ai-card-title { font-size: 14.5px; font-weight: 700; line-height: 1.4; margin: 6px 0; color: var(--text); }
-.ai-card-summary {
-  font-size: 12.5px;
-  line-height: 1.55;
-  color: var(--muted);
-  margin-bottom: 8px;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.ai-loading, .ai-empty { color: rgba(210, 232, 255, 0.45); font-size: 13px; text-align: center; padding: 24px 12px; grid-column: 1 / -1; }
-.ai-brief-box {
-  margin: 4px 0 14px;
-  padding: 16px 18px;
-  border-radius: 14px;
-  border: 1px solid rgba(167, 139, 250, 0.3);
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.1), rgba(103, 232, 249, 0.08));
-}
-.ai-brief-title { font-size: 14.5px; font-weight: 800; margin-bottom: 8px; color: var(--violet); }
-.ai-brief-text { font-size: 13px; line-height: 1.9; color: rgba(226, 246, 255, 0.88); white-space: pre-wrap; }
-.ai-brief-loading { color: rgba(210, 232, 255, 0.5); font-size: 13px; text-align: center; padding: 8px 0; }
-.ai-tag-cloud {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 4px 0 14px;
-  padding: 12px;
-  border-radius: 14px;
-  border: 1px dashed rgba(103, 232, 249, 0.25);
-  background: rgba(8, 18, 34, 0.4);
-}
+/* 热点标签 chips(Agent 对话内) */
 .tag-chip {
   appearance: none;
   display: inline-flex;
@@ -933,28 +827,6 @@ body.dragging { cursor: col-resize; user-select: none; }
 }
 .fav-btn:hover { border-color: var(--coral); color: var(--coral); transform: scale(1.15); box-shadow: 0 0 12px rgba(251, 113, 133, 0.4); }
 .fav-btn.favorited { color: #f43f5e; border-color: #f43f5e; background: rgba(244, 63, 94, 0.2); box-shadow: 0 0 12px rgba(244, 63, 94, 0.5); }
-
-/* 翻译按钮 */
-.translate-btn {
-  appearance: none;
-  display: inline-block;
-  vertical-align: middle;
-  margin-left: 8px;
-  padding: 2px 10px;
-  border-radius: 7px;
-  border: 1px solid rgba(167, 139, 250, 0.45);
-  background: rgba(167, 139, 250, 0.16);
-  color: var(--violet);
-  font-size: 11.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  white-space: nowrap;
-}
-.translate-btn:hover:not(:disabled) { color: #fff; background: linear-gradient(135deg, #a78bfa, #67e8f9); border-color: transparent; }
-.translate-btn:disabled { opacity: 0.5; cursor: wait; }
-.translate-btn.translated { color: var(--cyan); border-color: rgba(103, 232, 249, 0.45); background: rgba(103, 232, 249, 0.14); }
-.translate-btn.translated:hover:not(:disabled) { color: #fff; background: linear-gradient(135deg, #67e8f9, #a78bfa); }
 
 /* AI 解读 */
 .explain-btn {
@@ -1319,28 +1191,6 @@ body.dragging { cursor: col-resize; user-select: none; }
           </div>
         </section>
 
-        <section class="ai-section" aria-label="AI 智能助手">
-          <div class="ai-header"><h3>🤖 AI 智能助手</h3></div>
-          <div class="ai-tabs" role="tablist">
-            <button class="ai-tab active" data-tab="brief" role="tab">📰 早报</button>
-            <button class="ai-tab" data-tab="tags" role="tab">🏷️ 标签</button>
-            <button class="ai-tab" data-tab="recommend" role="tab">✨ 推荐</button>
-          </div>
-          <div class="ai-panel" id="aiPanelBrief">
-            <button class="ai-gen-btn" id="aiBriefBtn">📰 生成今日早报</button>
-            <div class="ai-brief-box" id="aiBriefBox" style="display:none;"></div>
-          </div>
-          <div class="ai-panel" id="aiPanelTags" hidden>
-            <button class="ai-gen-btn" id="aiTagsBtn">🏷️ 提取热点标签</button>
-            <div class="ai-tag-cloud" id="aiTagCloud" style="display:none;"></div>
-          </div>
-          <div class="ai-panel" id="aiPanelRecommend" hidden>
-            <div class="ai-desc" id="aiDesc">DeepSeek 将根据你的收藏偏好,从当前新闻中智能挑选最相关的内容。</div>
-            <button class="ai-gen-btn" id="aiGenBtn">根据我的收藏生成推荐</button>
-            <div class="ai-grid" id="aiGrid"></div>
-          </div>
-        </section>
-
         <section class="news-grid" id="masonry" aria-label="化学新闻"></section>
         <div class="empty" id="emptyState">当前分类暂无新闻。</div>
         <div class="empty" id="favEmptyState" style="display:none;">收藏夹为空,点击新闻卡片右上角的 ♡ 收藏你喜欢的新闻。</div>
@@ -1408,9 +1258,6 @@ const newsToggle = $("newsToggle"), newsClose = $("newsClose"), backdrop = $("ba
 const masonryEl = $("masonry"), emptyEl = $("emptyState"), favEmptyEl = $("favEmptyState");
 const heroStatsEl = $("heroStats"), statsChip = $("statsChip");
 const rankingCarouselEl = $("rankingCarousel");
-const aiGridEl = $("aiGrid"), aiGenBtn = $("aiGenBtn"), aiDescEl = $("aiDesc");
-const aiBriefBtn = $("aiBriefBtn"), aiTagsBtn = $("aiTagsBtn");
-const aiBriefBox = $("aiBriefBox"), aiTagCloud = $("aiTagCloud");
 const aiSearchInput = $("aiSearchInput"), aiSearchBtn = $("aiSearchBtn"), aiSearchClear = $("aiSearchClear");
 const selPop = $("selPop");
 
@@ -1465,11 +1312,6 @@ function toggleFavorite(item) {
   }
   updateFavoriteButtons();
   renderStats();
-  lastAIIndices = [];
-  recommendVisible = false;
-  aiGenBtn.textContent = "根据我的收藏生成推荐";
-  aiDescEl.textContent = AI_DESC_DEFAULT;
-  aiGridEl.innerHTML = "";
   renderNews(currentFilter === "favorites" ? "favorites" : currentFilter);
 }
 function updateFavoriteButtons() {
@@ -1483,28 +1325,9 @@ function updateFavoriteButtons() {
   });
 }
 
-// ===== 翻译缓存 =====
-let translationCache = {};
-const CACHE_VERSION = "v2";
-try {
-  const parsed = JSON.parse(localStorage.getItem("ai_translations") || "null");
-  if (parsed && parsed.__version === CACHE_VERSION) translationCache = parsed.data || {};
-  else localStorage.removeItem("ai_translations");
-} catch { translationCache = {}; }
-function saveTranslationCache() {
-  localStorage.setItem("ai_translations", JSON.stringify({ __version: CACHE_VERSION, data: translationCache }));
-}
-function isEnglishTitle(title) { return !/[一-龥]/.test(title) && /[a-zA-Z]/.test(title); }
-const translatedState = new Set();
-function displayName(item) {
-  if (translatedState.has(item.title) && translationCache[item.title]) return translationCache[item.title];
-  return item.title;
-}
-function translateBtnHtml(item) {
-  if (!isEnglishTitle(item.title)) return "";
-  const isZh = translatedState.has(item.title) && translationCache[item.title];
-  return `<button class="translate-btn ${isZh ? "translated" : ""}" data-title="${encodeURIComponent(item.title)}" title="${isZh ? "显示英文原文" : "AI 翻译该标题"}">${isZh ? "原文" : "译"}</button>`;
-}
+// ===== 标题显示 =====
+// (翻译功能已迁移至 Agent 对话:直接对 Agent 说"翻译这条新闻"即可)
+function displayName(item) { return item.title; }
 
 // ===== AI 解读缓存 =====
 let explainCache = {};
@@ -1693,7 +1516,7 @@ function citationCardsHtml(items) {
 
 // 演示回复(未接入后端时使用)
 function stubReply(text) {
-  return `我已收到你的问题:「<b>${escapeHtml(text)}</b>」。<br><span class="bubble-hint">当前为前端演示模式,接入 Agent 后端后(见 <code>AGENT_BACKEND_HOOK</code> 钩子),此处将返回真实的化学分析结果。</span><br>你现在可以:<ul><li>输入 <b>/news</b> 唤起新闻文献面板</li><li>问我「<b>布洛芬的结构式</b>」直接生成分子结构图 🧬</li><li>在新闻面板中<b>选中任意文本</b>,一键发送给我解读</li><li>把新闻卡片上的 ⠿ 手柄<b>拖到对话区</b>,我会阅读原文网页后作答</li></ul>`;
+  return `我已收到你的问题:「<b>${escapeHtml(text)}</b>」。<br><span class="bubble-hint">当前为前端演示模式,接入 Agent 后端后(见 <code>AGENT_BACKEND_HOOK</code> 钩子),此处将返回真实的化学分析结果。</span><br>你现在可以:<ul><li>输入 <b>/news</b> 唤起新闻文献面板</li><li>说「<b>早报</b>」「<b>热点标签</b>」「<b>为我推荐</b>」获取对应内容</li><li>问我「<b>布洛芬的结构式</b>」直接生成 3D 分子模型 🧬</li><li>在新闻面板中<b>选中任意文本</b>,一键发送给我解读;把卡片 ⠿ 手柄<b>拖到对话区</b>,我会阅读原文网页后作答</li></ul>`;
 }
 
 let agentBusy = false;
@@ -1723,6 +1546,36 @@ async function handleUserText(text) {
       return;
     }
     // PubChem 未收录(如 NCM 正极材料等非整比材料/聚合物):不再只报错,转交 DeepSeek 讲解
+  }
+
+  // 指令:今日早报
+  if (/^\/?(早报|今日早报|dailybrief)/i.test(text) || text.includes("早报")) {
+    const html = await agentDailyBrief();
+    typingEl.remove();
+    addMessage("ai", html);
+    agentBusy = false;
+    composerSend.disabled = false;
+    return;
+  }
+
+  // 指令:热点标签
+  if (/^\/?(热点标签|标签|tags)/i.test(text) || text.includes("热点标签")) {
+    const html = await agentHotTags();
+    typingEl.remove();
+    addMessage("ai", html);
+    agentBusy = false;
+    composerSend.disabled = false;
+    return;
+  }
+
+  // 指令:收藏推荐
+  if (/^\/?(推荐|recommend)/i.test(text) || /(给我|为我|帮我)推荐|收藏推荐/.test(text)) {
+    const html = await agentRecommend();
+    typingEl.remove();
+    addMessage("ai", html);
+    agentBusy = false;
+    composerSend.disabled = false;
+    return;
   }
 
   // 指令:唤起新闻文献
@@ -2131,14 +1984,12 @@ function newsTemplate(item, index) {
   const importantHtml = featured ? `<span class="story-important">重要</span>` : "";
   const decoHtml = featured ? BENZENE_SVG : "";
   const title = displayName(item);
-  const isTranslated = translatedState.has(item.title) && translationCache[item.title] && isEnglishTitle(item.title);
-  const titleAttr = isTranslated ? ` title="原文: ${escapeHtml(item.title)}"` : "";
   return `
     <article class="story ${featured ? "story-featured" : ""}" data-type="${item.type}">
       ${decoHtml}${favBtnHtml(item, index)}
       <span class="drag-handle" draggable="true" data-dragidx="${index}" title="点击或拖拽到对话区,把本文附加给 Agent">⠿</span>
       <div class="story-meta-line"><span class="story-time">${escapeHtml(item.time || "")}</span>${tagHtml}${importantHtml}</div>
-      <h2 class="${featured ? "story-title-xl" : "story-title-sm"}"${titleAttr}>${escapeHtml(title)}${translateBtnHtml(item)}</h2>
+      <h2 class="${featured ? "story-title-xl" : "story-title-sm"}">${escapeHtml(title)}</h2>
       <p class="${featured ? "story-summary-lg" : "story-summary"}">${escapeHtml(item.summary || "")}</p>
       <div class="story-foot"><span class="story-source">${escapeHtml(item.source || "")}</span><span class="story-foot-actions">${explainBtnHtml(item)}<a class="story-link" href="${item.url}" target="_blank" rel="noopener noreferrer">阅读全文 ↗</a></span></div>
       ${explainPanelHtml(item)}
@@ -2182,45 +2033,6 @@ masonryEl.addEventListener("click", (e) => {
   if (item) toggleFavorite(item);
 });
 
-// 翻译按钮(面板内所有区域共用)
-async function handleTranslateClick(e) {
-  const btn = e.target.closest(".translate-btn");
-  if (!btn) return;
-  e.preventDefault();
-  e.stopPropagation();
-  const title = decodeURIComponent(btn.dataset.title);
-  if (translatedState.has(title)) {
-    translatedState.delete(title);
-    refreshAll();
-    return;
-  }
-  if (translationCache[title]) {
-    translatedState.add(title);
-    refreshAll();
-    return;
-  }
-  btn.textContent = "…";
-  btn.disabled = true;
-  try {
-    const resp = await fetch("/api/ai/translate", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ titles: [title] }),
-    });
-    if (resp.ok) {
-      const json = await resp.json();
-      if (json.code === 200 && json.data && json.data[title]) {
-        translationCache[title] = json.data[title];
-        saveTranslationCache();
-        translatedState.add(title);
-      }
-    }
-  } catch (err) { console.log("翻译失败", err); }
-  refreshAll();
-}
-masonryEl.addEventListener("click", handleTranslateClick);
-rankingCarouselEl.addEventListener("click", handleTranslateClick);
-aiGridEl.addEventListener("click", handleTranslateClick);
-
 // AI 解读按钮
 masonryEl.addEventListener("click", async (e) => {
   const btn = e.target.closest(".explain-btn");
@@ -2258,12 +2070,6 @@ masonryEl.addEventListener("click", async (e) => {
   renderNews(currentFilter);
 });
 
-function refreshAll() {
-  renderNews(currentFilter);
-  loadRanking();
-  if (recommendVisible && lastAIIndices && lastAIIndices.length > 0) renderAIRecommend(lastAIIndices);
-}
-
 // ===== 排行榜 =====
 let rankingTimer = null;
 let rankingPos = 0;
@@ -2295,7 +2101,6 @@ async function loadRanking() {
             <div class="ranking-meta">
               <span class="ranking-source">${escapeHtml(item.news_source || "")}</span>
               <span class="ranking-count">♡ ${item.favorite_count}</span>
-              ${translateBtnHtml(rankItem)}
             </div>
           </div>
         </div>`;
@@ -2378,7 +2183,6 @@ document.querySelectorAll(".filter-btn").forEach(btn => {
       searchQueryText = "";
       aiSearchClear.style.display = "none";
       emptyEl.textContent = "当前分类暂无新闻。";
-      renderTagCloud();
     }
     if (f === "favorites") {
       document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
@@ -2400,141 +2204,65 @@ document.querySelectorAll(".filter-btn").forEach(btn => {
   });
 });
 
-// ===== AI 早报 =====
-let briefText = "";
-aiBriefBtn.addEventListener("click", async () => {
-  if (newsData.length === 0) return;
-  if (aiBriefBox.style.display !== "none" && briefText) {
-    aiBriefBox.style.display = "none";
-    aiBriefBtn.textContent = "📰 生成今日早报";
-    return;
+/* =========================================================
+   Agent 对话指令:早报 / 热点标签 / 收藏推荐(原新闻面板 AI 助手迁移)
+   ========================================================= */
+// 今日早报(带缓存)
+let briefCache = "";
+async function agentDailyBrief() {
+  if (newsData.length === 0) return "暂无新闻数据,无法生成早报。";
+  if (!briefCache) {
+    try {
+      const resp = await fetch("/api/ai/dailybrief", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ news: newsData.map(n => ({ title: n.title, summary: n.summary, type: n.type })) }),
+      });
+      const json = await resp.json();
+      if (json.code === 200 && json.data) briefCache = json.data;
+    } catch {}
   }
-  if (briefText) {
-    aiBriefBox.innerHTML = `<div class="ai-brief-title">📰 今日化学早报</div><div class="ai-brief-text">${escapeHtml(briefText)}</div>`;
-    aiBriefBox.style.display = "block";
-    aiBriefBtn.textContent = "📰 收起早报";
-    return;
-  }
-  aiBriefBtn.disabled = true;
-  aiBriefBtn.textContent = "📰 撰写中…";
-  aiBriefBox.style.display = "block";
-  aiBriefBox.innerHTML = '<div class="ai-brief-loading">DeepSeek 正在撰写今日早报…</div>';
-  try {
-    const resp = await fetch("/api/ai/dailybrief", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ news: newsData.map(n => ({ title: n.title, summary: n.summary, type: n.type })) }),
-    });
-    const json = await resp.json();
-    if (json.code === 200 && json.data) {
-      briefText = json.data;
-      aiBriefBox.innerHTML = `<div class="ai-brief-title">📰 今日化学早报</div><div class="ai-brief-text">${escapeHtml(briefText)}</div>`;
-      aiBriefBtn.textContent = "📰 收起早报";
-    } else {
-      aiBriefBox.style.display = "none";
-      aiBriefBtn.textContent = "📰 生成今日早报";
-    }
-  } catch (err) {
-    aiBriefBox.style.display = "none";
-    aiBriefBtn.textContent = "📰 生成今日早报";
-  }
-  aiBriefBtn.disabled = false;
-});
-
-// ===== AI 热点标签云(新闻面板内) =====
-let currentTags = [];
-let tagsVisible = false;
-aiTagsBtn.addEventListener("click", async () => {
-  if (newsData.length === 0) return;
-  if (tagsVisible) {
-    aiTagCloud.style.display = "none";
-    tagsVisible = false;
-    aiTagsBtn.textContent = "🏷️ 提取热点标签";
-    return;
-  }
-  if (currentTags.length > 0) {
-    renderTagCloud();
-    aiTagCloud.style.display = "flex";
-    tagsVisible = true;
-    aiTagsBtn.textContent = "🏷️ 收起标签";
-    return;
-  }
-  aiTagsBtn.disabled = true;
-  aiTagsBtn.textContent = "🏷️ 分析中…";
-  aiTagCloud.style.display = "flex";
-  aiTagCloud.innerHTML = '<div class="ai-brief-loading">DeepSeek 正在提炼热点…</div>';
-  try {
-    const resp = await fetch("/api/ai/hottags", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ news: newsData.map(n => ({ title: n.title, summary: n.summary, type: n.type })) }),
-    });
-    const json = await resp.json();
-    if (json.code === 200 && json.data && json.data.length > 0) {
-      currentTags = json.data;
-      renderTagCloud();
-      tagsVisible = true;
-      aiTagsBtn.textContent = "🏷️ 收起标签";
-    } else {
-      aiTagCloud.style.display = "none";
-      aiTagsBtn.textContent = "🏷️ 提取热点标签";
-    }
-  } catch (err) {
-    aiTagCloud.style.display = "none";
-    aiTagsBtn.textContent = "🏷️ 提取热点标签";
-  }
-  aiTagsBtn.disabled = false;
-});
-function renderTagCloud(activeTag) {
-  aiTagCloud.innerHTML = currentTags.map((t, i) =>
-    `<button class="tag-chip ${activeTag === t.tag ? "active" : ""}" data-tagidx="${i}">${escapeHtml(t.tag)}<span class="tag-count">${t.indices.length}</span></button>`).join("");
+  if (!briefCache) return "⚠️ 早报生成失败,请稍后再试。";
+  return `📰 <b>今日化学早报</b><br>` + fmtReply(briefCache);
 }
-aiTagCloud.addEventListener("click", (e) => {
-  const chip = e.target.closest(".tag-chip");
-  if (!chip) return;
-  const tag = currentTags[parseInt(chip.dataset.tagidx)];
-  if (!tag) return;
-  if (searchIndices !== null && searchQueryText === "tag:" + tag.tag) {
-    clearAISearch();
-    renderTagCloud();
-    return;
+
+// 热点标签(带缓存,点击标签可筛选新闻)
+let hotTagsCache = [];
+async function agentHotTags() {
+  if (newsData.length === 0) return "暂无新闻数据。";
+  if (hotTagsCache.length === 0) {
+    try {
+      const resp = await fetch("/api/ai/hottags", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ news: newsData.map(n => ({ title: n.title, summary: n.summary, type: n.type })) }),
+      });
+      const json = await resp.json();
+      if (json.code === 200 && json.data && json.data.length > 0) hotTagsCache = json.data;
+    } catch {}
   }
+  if (hotTagsCache.length === 0) return "⚠️ 热点提炼失败,请稍后再试。";
+  return `🏷️ <b>今日化学热点标签</b> <span class="bubble-hint">点击标签可直接筛选新闻:</span><div class="suggest-chips">` +
+    hotTagsCache.map((t, i) =>
+      `<button class="tag-chip hot-tag-chip" data-hotidx="${i}">${escapeHtml(t.tag)}<span class="tag-count">${t.indices.length}</span></button>`).join("") + `</div>`;
+}
+chatInner.addEventListener("click", (e) => {
+  const chip = e.target.closest(".hot-tag-chip");
+  if (!chip) return;
+  const tag = hotTagsCache[parseInt(chip.dataset.hotidx)];
+  if (!tag) return;
   searchIndices = tag.indices;
   searchQueryText = "tag:" + tag.tag;
   activeFilters.clear();
   document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
   document.querySelector('[data-filter="all"]').classList.add("active");
   aiSearchClear.style.display = "inline-block";
-  renderTagCloud(tag.tag);
   renderNews("all");
+  openNewsPanel();
 });
 
-// ===== AI 智能推荐 =====
-let lastAIIndices = [];
-let recommendVisible = false;
-let recommendDesc = "";
-const AI_DESC_DEFAULT = aiDescEl.textContent;
-async function generateAIRecommend() {
-  if (recommendVisible) {
-    aiGridEl.innerHTML = "";
-    recommendVisible = false;
-    aiGenBtn.textContent = "根据我的收藏生成推荐";
-    aiDescEl.textContent = AI_DESC_DEFAULT;
-    return;
-  }
-  if (lastAIIndices.length > 0) {
-    renderAIRecommend(lastAIIndices);
-    aiDescEl.textContent = recommendDesc;
-    recommendVisible = true;
-    aiGenBtn.textContent = "收起推荐";
-    return;
-  }
-  if (newsData.length === 0) {
-    aiGridEl.innerHTML = '<div class="ai-empty">暂无新闻数据</div>';
-    return;
-  }
+// 收藏推荐
+async function agentRecommend() {
+  if (newsData.length === 0) return "暂无新闻数据。";
   const favTitles = getLocalFavorites().map(f => f.title);
-  aiGenBtn.disabled = true;
-  aiGenBtn.textContent = "AI 分析中…";
-  aiGridEl.innerHTML = '<div class="ai-loading">DeepSeek 正在分析你的偏好…</div>';
   try {
     const resp = await fetch("/api/ai/recommend", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -2542,51 +2270,15 @@ async function generateAIRecommend() {
     });
     const json = await resp.json();
     if (json.code === 200 && json.data && json.data.length > 0) {
-      lastAIIndices = json.data;
-      renderAIRecommend(json.data);
-      recommendDesc = favTitles.length > 0
-        ? `基于你收藏的 ${favTitles.length} 条新闻生成,共推荐 ${json.data.length} 条。`
-        : `你还没有收藏,这是 AI 根据新闻重要性挑选的 ${json.data.length} 条。`;
-      aiDescEl.textContent = recommendDesc;
-      recommendVisible = true;
-      aiGenBtn.textContent = "收起推荐";
-    } else {
-      aiGridEl.innerHTML = '<div class="ai-empty">未能生成推荐,请稍后再试。</div>';
-      aiGenBtn.textContent = "根据我的收藏生成推荐";
+      const items = json.data.map(i => newsData[i]).filter(Boolean);
+      const desc = favTitles.length > 0
+        ? `基于你收藏的 ${favTitles.length} 条新闻生成:`
+        : `你还没有收藏,这是按新闻重要性挑选的:`;
+      return `✨ <b>为你推荐</b> <span class="bubble-hint">${desc}</span>` + citationCardsHtml(items);
     }
-  } catch (e) {
-    aiGridEl.innerHTML = '<div class="ai-empty">推荐生成失败,请稍后再试。</div>';
-    aiGenBtn.textContent = "根据我的收藏生成推荐";
-  }
-  aiGenBtn.disabled = false;
+  } catch {}
+  return "⚠️ 推荐生成失败,请稍后再试。";
 }
-function renderAIRecommend(indices) {
-  const items = indices.map(i => newsData[i]).filter(Boolean);
-  if (items.length === 0) {
-    aiGridEl.innerHTML = '<div class="ai-empty">暂无推荐结果</div>';
-    return;
-  }
-  aiGridEl.innerHTML = items.map((item, i) => `
-    <article class="ai-card">
-      <div class="ai-card-rank">#${i + 1}</div>
-      <div class="ai-card-body">
-        <div class="story-meta-line"><span class="story-time">${escapeHtml(item.time || "")}</span><span class="story-tag ${item.type}">${categoryLabels[item.type] || item.type}</span></div>
-        <h4 class="ai-card-title">${escapeHtml(displayName(item))}${translateBtnHtml(item)}</h4>
-        <p class="ai-card-summary">${escapeHtml(item.summary || "")}</p>
-        <div class="story-foot"><span class="story-source">${escapeHtml(item.source || "")}</span><a class="story-link" href="${item.url}" target="_blank" rel="noopener noreferrer">阅读全文 ↗</a></div>
-      </div>
-    </article>`).join("");
-}
-aiGenBtn.addEventListener("click", generateAIRecommend);
-
-// ===== AI 助手 Tab 切换 =====
-const aiPanels = { brief: $("aiPanelBrief"), tags: $("aiPanelTags"), recommend: $("aiPanelRecommend") };
-document.querySelectorAll(".ai-tab").forEach(tab => {
-  tab.addEventListener("click", () => {
-    document.querySelectorAll(".ai-tab").forEach(t => t.classList.toggle("active", t === tab));
-    Object.entries(aiPanels).forEach(([name, panel]) => { panel.hidden = name !== tab.dataset.tab; });
-  });
-});
 
 /* =========================================================
    Three.js 深空背景:星空 + 水面波纹鼠标效果
@@ -2878,7 +2570,7 @@ pteOverlay.addEventListener("click", (e) => { if (e.target === pteOverlay) pteOv
    ========================================================= */
 (async function init() {
   // 欢迎消息
-  addMessage("ai", `你好,我是你的<b>化学智能体</b> ⚗️<br><span class="bubble-hint">我可以帮你分析化学资讯、解读文献、追踪研究热点。你现在可以:</span><ul><li>直接输入化学问题与我对话</li><li>问我「<b>布洛芬的结构式</b>」或输入 <b>/mol 布洛芬</b>,我会画出分子结构图 🧬</li><li>输入 <b>/news</b> 唤起今日新闻文献面板</li><li>在新闻面板中<b>选中文本</b>,一键发送给我解读;把卡片 ⠿ 手柄<b>拖到对话区</b>,我会阅读原文网页后作答</li></ul>试试这些:` + suggestChipsHtml(["今日化学热点有哪些?", "布洛芬的结构式", "帮我总结今日新闻"]));
+  addMessage("ai", `你好,我是你的<b>化学智能体</b> ⚗️<br><span class="bubble-hint">我可以帮你分析化学资讯、解读文献、追踪研究热点。你现在可以:</span><ul><li>直接输入化学问题与我对话,支持中文化合物名和 SMILES</li><li>说「<b>早报</b>」「<b>热点标签</b>」「<b>为我推荐</b>」获取今日内容</li><li>问我「<b>布洛芬的结构式</b>」或输入 <b>/mol 布洛芬</b>,我会画出 3D 分子模型 🧬</li><li>问我具体反应(如「甲烷燃烧」),附方程式与 3D 反应演示</li><li>输入 <b>/news</b> 唤起新闻文献面板;选中面板文本可一键解读,把卡片 ⠿ 拖到对话区我会阅读原文网页</li></ul>试试这些:` + suggestChipsHtml(["今日早报", "热点标签", "布洛芬的结构式"]));
   // 新闻骨架屏
   masonryEl.innerHTML = Array.from({ length: 3 }, () => `
     <div class="story skeleton-card" aria-hidden="true">
