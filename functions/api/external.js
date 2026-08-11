@@ -78,6 +78,11 @@ function formatTime(dateStr, fallbackIndex) {
   if (dateStr) {
     const d = new Date(dateStr);
     if (!isNaN(d.getTime())) {
+      // 期刊"发表日期"常是排期的未来刊期(如 2027 年 1 月刊)——新闻不可能来自未来,超过 24h 视为当天
+      if (d.getTime() > Date.now() + 24 * 3600 * 1000) {
+        const nowBj = new Date(Date.now() + TZ - fallbackIndex * 12 * 60000);
+        return fmt(nowBj);
+      }
       const bj = new Date(d.getTime() + TZ);
       // 若原数据只有日期(时间为00:00),时间部分用当前时间递减代替
       if (d.getUTCHours() !== 0 || d.getUTCMinutes() !== 0) {
@@ -193,7 +198,8 @@ async function fetchCrossref() {
       const abstract = cleanHtml(item.abstract || '').substring(0, 200);
       const journal = item['container-title']?.[0] || 'Chemistry Journal';
       if (!isChemistryRelated(title, abstract, journal)) continue;
-      const dateParts = item.published?.['date-parts']?.[0];
+      // 优先 electronic 上线日期(published-online),print 刊期常排在未来
+      const dateParts = item['published-online']?.['date-parts']?.[0] || item.published?.['date-parts']?.[0];
       const dateStr = dateParts ? `${dateParts[0]}-${String(dateParts[1]||1).padStart(2,'0')}-${String(dateParts[2]||1).padStart(2,'0')}` : null;
       list.push({
         time: formatTime(dateStr, list.length + 10),
@@ -224,8 +230,9 @@ async function fetchCrossref() {
 // =========================
 async function fetchOpenAlex() {
   try {
-    // C178790648 = Chemistry, C185592680 = Materials science
-    const url = 'https://api.openalex.org/works?filter=concepts.id:C178790648|C185592680,publication_year:2025-2026,type:article&sort=publication_date:desc&per_page=10&mailto=info@huaxue-news.pages.dev';
+    // C178790648 = Chemistry, C185592680 = Materials science(年份动态:去年~今年,避免硬编码过期)
+    const thisYear = new Date().getUTCFullYear();
+    const url = `https://api.openalex.org/works?filter=concepts.id:C178790648|C185592680,publication_year:${thisYear - 1}-${thisYear},type:article&sort=publication_date:desc&per_page=10&mailto=info@huaxue-news.pages.dev`;
     const resp = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChemistryNewsBot/1.0)' },
       cf: { cacheTtl: 300 },
@@ -300,7 +307,8 @@ async function fetchPubMed() {
       if (!isValidArticle(title, url)) return;
       const journal = item.fulljournalname || 'PubMed';
       if (!isChemistryRelated(title, journal, journal)) return;
-      const pubDate = item.pubdate || '';
+      // 优先 epubdate(电子上线日期),pubdate 是纸刊刊期常排在未来
+      const pubDate = item.epubdate || item.pubdate || '';
       news.push({
         time: formatTime(pubDate, i + 30),
         type: classifyNews(title, journal),
