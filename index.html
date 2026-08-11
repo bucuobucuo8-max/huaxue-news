@@ -1714,12 +1714,15 @@ async function handleUserText(text) {
   const molQuery = parseMoleculeQuery(text);
   if (molQuery) {
     const result = await fetchMolecule(molQuery);
-    typingEl.remove();
-    const el = addMessage("ai", moleculeCardHtml(result));
-    el.querySelectorAll(".mol-3d").forEach(initMol3D);
-    agentBusy = false;
-    composerSend.disabled = false;
-    return;
+    if (!result.error) {
+      typingEl.remove();
+      const el = addMessage("ai", moleculeCardHtml(result));
+      el.querySelectorAll(".mol-3d").forEach(initMol3D);
+      agentBusy = false;
+      composerSend.disabled = false;
+      return;
+    }
+    // PubChem 未收录(如 NCM 正极材料等非整比材料/聚合物):不再只报错,转交 DeepSeek 讲解
   }
 
   // 指令:唤起新闻文献
@@ -1864,7 +1867,7 @@ async function fetchMolecule(query) {
       }
     } catch {}
   }
-  return { error: `PubChem 未找到「${query}」,请尝试英文通用名、标准分子式或合法 SMILES。` };
+  return { error: `PubChem 未收录「${query}」——它可能是非整比材料(如 NCM/LFP 电池材料)、混合物或聚合物,不在小分子数据库中。你可以直接问我关于它的问题,我会用已有知识讲解。` };
 }
 
 // 对话内分子结构卡片(3D 球棍模型,可拖拽旋转;失败回退 2D 图)
