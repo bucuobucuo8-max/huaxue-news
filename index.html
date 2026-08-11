@@ -150,18 +150,13 @@ body::before {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  border-radius: 18px;
-  border: 1px solid rgba(125, 211, 252, 0.14);
-  /* 高通透毛玻璃:让星空与漂浮分子透出来 */
-  background: rgba(3, 8, 20, 0.22);
-  backdrop-filter: blur(8px) saturate(125%);
-  -webkit-backdrop-filter: blur(8px) saturate(125%);
-  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.22);
+  /* 空白区无底板:完全透明,星空背景直接透出,只有气泡保留玻璃质感 */
+  background: transparent;
 }
 .chat-inner {
   max-width: 860px;
   margin: 0 auto;
-  padding: 28px 24px;
+  padding: 20px 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 16px;
