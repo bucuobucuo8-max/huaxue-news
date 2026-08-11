@@ -1532,10 +1532,12 @@ async function handleUserText(text) {
     : "";
   addMessage("user", escapeHtml(text) + attachHtml);
   const typingEl = addTyping();
+  // 附加了文献时,意图显然是讨论文献 → 跳过所有快捷指令,直接对话(携带网页阅读)
+  const hasAttach = attachedArticles.length > 0;
 
   // 意图:分子结构查询 → 对话内直接渲染 3D 结构卡片
   const molQuery = parseMoleculeQuery(text);
-  if (molQuery) {
+  if (!hasAttach && molQuery) {
     const result = await fetchMolecule(molQuery);
     if (!result.error) {
       typingEl.remove();
@@ -1549,7 +1551,7 @@ async function handleUserText(text) {
   }
 
   // 指令:今日早报
-  if (/^\/?(早报|今日早报|dailybrief)/i.test(text) || text.includes("早报")) {
+  if (!hasAttach && (/^\/?(早报|今日早报|dailybrief)/i.test(text) || text.includes("早报"))) {
     const html = await agentDailyBrief();
     typingEl.remove();
     addMessage("ai", html);
@@ -1559,7 +1561,7 @@ async function handleUserText(text) {
   }
 
   // 指令:热点标签
-  if (/^\/?(热点标签|标签|tags)/i.test(text) || text.includes("热点标签")) {
+  if (!hasAttach && (/^\/?(热点标签|标签|tags)/i.test(text) || text.includes("热点标签"))) {
     const html = await agentHotTags();
     typingEl.remove();
     addMessage("ai", html);
@@ -1569,7 +1571,7 @@ async function handleUserText(text) {
   }
 
   // 指令:收藏推荐
-  if (/^\/?(推荐|recommend)/i.test(text) || /(给我|为我|帮我)推荐|收藏推荐/.test(text)) {
+  if (!hasAttach && (/^\/?(推荐|recommend)/i.test(text) || /(给我|为我|帮我)推荐|收藏推荐/.test(text))) {
     const html = await agentRecommend();
     typingEl.remove();
     addMessage("ai", html);
@@ -1579,7 +1581,7 @@ async function handleUserText(text) {
   }
 
   // 指令:唤起新闻文献
-  if (/^\/?news/i.test(text) || text.includes("新闻") || text.includes("文献")) {
+  if (!hasAttach && (/^\/?news/i.test(text) || text.includes("新闻") || text.includes("文献"))) {
     openNewsPanel();
     await new Promise(r => setTimeout(r, 500));
     typingEl.remove();
