@@ -1090,6 +1090,75 @@ body.dragging { cursor: col-resize; user-select: none; }
 }
 .pte-ask:hover { box-shadow: 0 4px 14px rgba(103, 232, 249, 0.35); }
 
+/* ================= 会话知识库 ================= */
+.kb-badge {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  border-radius: 8px;
+  background: rgba(103, 232, 249, 0.2);
+  border: 1px solid rgba(103, 232, 249, 0.4);
+  color: var(--cyan);
+  font-size: 11px;
+  font-weight: 700;
+}
+.kb-card { width: min(94vw, 620px); }
+.kb-hint { font-size: 12.5px; color: var(--muted); line-height: 1.7; margin-bottom: 12px; }
+.kb-hint b { color: var(--cyan); }
+.kb-list { max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.kb-list:empty::after { content: "知识库还是空的——把新闻卡片 ⠿ 拖给 Agent 读一篇网页试试。"; font-size: 12.5px; color: var(--muted); padding: 14px 4px; display: block; }
+.kb-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(103, 232, 249, 0.16);
+  background: rgba(8, 18, 34, 0.45);
+  transition: border-color 0.2s ease;
+}
+.kb-item.checked { border-color: rgba(103, 232, 249, 0.45); box-shadow: 0 0 12px rgba(103, 232, 249, 0.08); }
+.kb-item input[type="checkbox"] { accent-color: #67e8f9; width: 15px; height: 15px; cursor: pointer; flex: 0 0 auto; }
+.kb-item-body { flex: 1; min-width: 0; }
+.kb-item-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0f2fe;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kb-item-title:hover { color: var(--cyan); }
+.kb-item-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.kb-remove {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+.kb-remove:hover { color: var(--coral); background: rgba(251, 113, 133, 0.12); }
+.kb-foot { margin-top: 12px; text-align: right; }
+.kb-clear {
+  appearance: none;
+  border: 1px solid rgba(251, 113, 133, 0.35);
+  background: rgba(251, 113, 133, 0.1);
+  color: var(--coral);
+  border-radius: 9px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.kb-clear:hover { background: rgba(251, 113, 133, 0.22); }
+
 /* ================= 移动端:Agent 全屏 + 新闻抽屉 ================= */
 @media (max-width: 768px) {
   .agent { padding: 12px 10px; }
@@ -1132,6 +1201,7 @@ body.dragging { cursor: col-resize; user-select: none; }
     <div class="brand"><span class="brand-dot"></span>CHEMISTRY AGENT · 化学智能体工作台</div>
     <div class="topbar-actions">
       <span class="stats-chip" id="statsChip">加载中…</span>
+      <button class="news-toggle" id="kbToggle">📚 知识库 <span class="kb-badge" id="kbCount">0</span></button>
       <button class="news-toggle" id="pteToggle">🧪 周期表</button>
       <button class="news-toggle" id="newsToggle">📰 新闻文献</button>
     </div>
@@ -1219,6 +1289,21 @@ body.dragging { cursor: col-resize; user-select: none; }
           <button class="motd-ok" id="motdOk">开始探索</button>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- 会话知识库面板 -->
+<div class="pte-overlay" id="kbOverlay" hidden>
+  <div class="pte-card kb-card">
+    <div class="pte-head">
+      <h3>📚 会话知识库</h3>
+      <button class="motd-close" id="kbClose" title="关闭">✕</button>
+    </div>
+    <div class="kb-hint">你读过的网页会自动收集到这里。<b>勾选</b>后,后续每轮对话都会携带这些网页的全文,Agent 可跨多篇综合对比回答(最多同时携带 3 篇)。</div>
+    <div class="kb-list" id="kbList"></div>
+    <div class="kb-foot">
+      <button class="kb-clear" id="kbClear">🗑 清空知识库</button>
     </div>
   </div>
 </div>
@@ -1355,8 +1440,67 @@ window.AGENT_BACKEND_HOOK = window.AGENT_BACKEND_HOOK || null;
 // 对话历史(纯文本,用于多轮上下文)
 const chatHistory = [];
 
+// ===== 会话知识库(sessionStorage 持久化,刷新不丢) =====
+let knowledgeBase = [];
+try { knowledgeBase = JSON.parse(sessionStorage.getItem("knowledge_base") || "[]"); } catch { knowledgeBase = []; }
+function saveKB() {
+  sessionStorage.setItem("knowledge_base", JSON.stringify(knowledgeBase));
+  $("kbCount").textContent = knowledgeBase.length;
+}
+function addToKB(a) {
+  if (!a || !a.url) return;
+  if (knowledgeBase.some(k => k.url === a.url)) return;
+  knowledgeBase.unshift({ title: a.title, url: a.url, source: a.source || "", summary: a.summary || "", checked: true });
+  saveKB();
+  renderKBList();
+}
+function removeFromKB(url) {
+  knowledgeBase = knowledgeBase.filter(k => k.url !== url);
+  saveKB();
+  renderKBList();
+}
+function renderKBList() {
+  const list = $("kbList");
+  list.innerHTML = knowledgeBase.map(k => `
+    <div class="kb-item ${k.checked ? "checked" : ""}" data-url="${escapeHtml(k.url)}">
+      <input type="checkbox" class="kb-check" ${k.checked ? "checked" : ""} title="勾选后,后续对话携带该网页全文">
+      <div class="kb-item-body">
+        <a class="kb-item-title" href="${escapeHtml(k.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(k.title)}">📄 ${escapeHtml(k.title)}</a>
+        <div class="kb-item-meta">${escapeHtml(k.source || "")}</div>
+      </div>
+      <button class="kb-remove" title="移出知识库">✕</button>
+    </div>`).join("");
+}
+$("kbList").addEventListener("change", (e) => {
+  const box = e.target.closest(".kb-check");
+  if (!box) return;
+  const url = box.closest(".kb-item").dataset.url;
+  const item = knowledgeBase.find(k => k.url === url);
+  if (item) { item.checked = box.checked; saveKB(); }
+  box.closest(".kb-item").classList.toggle("checked", box.checked);
+});
+$("kbList").addEventListener("click", (e) => {
+  const btn = e.target.closest(".kb-remove");
+  if (!btn) return;
+  removeFromKB(btn.closest(".kb-item").dataset.url);
+});
+$("kbClear").addEventListener("click", () => {
+  knowledgeBase = [];
+  saveKB();
+  renderKBList();
+});
+const kbOverlay = $("kbOverlay");
+$("kbToggle").addEventListener("click", () => { renderKBList(); kbOverlay.hidden = false; });
+$("kbClose").addEventListener("click", () => { kbOverlay.hidden = true; });
+kbOverlay.addEventListener("click", (e) => { if (e.target === kbOverlay) kbOverlay.hidden = true; });
+
 // 调用 /api/ai/chat(流式),onUpdate 回调累计文本,最终返回完整回复
 async function streamAgentChat(text, onUpdate) {
+  // 文献载荷 = 本次附加的 chips ∪ 知识库勾选条目(按 URL 去重,上限 3 篇)
+  const merged = [
+    ...attachedArticles.map(a => ({ title: a.title, url: a.url, summary: a.summary, source: a.source })),
+    ...knowledgeBase.filter(k => k.checked).map(k => ({ title: k.title, url: k.url, summary: k.summary, source: k.source })),
+  ].filter((v, i, arr) => v.url && arr.findIndex(x => x.url === v.url) === i).slice(0, 3);
   const resp = await fetch("/api/ai/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1364,7 +1508,7 @@ async function streamAgentChat(text, onUpdate) {
       message: text,
       history: chatHistory.slice(-10),
       news: newsData.slice(0, 15).map(n => ({ title: n.title, summary: n.summary, type: n.type })),
-      articles: attachedArticles.map(a => ({ title: a.title, url: a.url, summary: a.summary, source: a.source })),
+      articles: merged,
     }),
   });
   if (!resp.ok || !resp.body) {
@@ -1532,6 +1676,8 @@ async function handleUserText(text) {
     : "";
   addMessage("user", escapeHtml(text) + attachHtml);
   const typingEl = addTyping();
+  // 发送后:附加文献自动存入会话知识库(默认勾选携带)
+  attachedArticles.forEach(addToKB);
   // 附加了文献时,意图显然是讨论文献 → 跳过所有快捷指令,直接对话(携带网页阅读)
   const hasAttach = attachedArticles.length > 0;
 
@@ -2572,7 +2718,7 @@ pteOverlay.addEventListener("click", (e) => { if (e.target === pteOverlay) pteOv
    ========================================================= */
 (async function init() {
   // 欢迎消息
-  addMessage("ai", `你好,我是你的<b>化学智能体</b> ⚗️<br><span class="bubble-hint">我可以帮你分析化学资讯、解读文献、追踪研究热点。你现在可以:</span><ul><li>直接输入化学问题与我对话,支持中文化合物名和 SMILES</li><li>说「<b>早报</b>」「<b>热点标签</b>」「<b>为我推荐</b>」获取今日内容</li><li>问我「<b>布洛芬的结构式</b>」或输入 <b>/mol 布洛芬</b>,我会画出 3D 分子模型 🧬</li><li>问我具体反应(如「甲烷燃烧」),附方程式与 3D 反应演示</li><li>输入 <b>/news</b> 唤起新闻文献面板;选中面板文本可一键解读,把卡片 ⠿ 拖到对话区我会阅读原文网页</li></ul>试试这些:` + suggestChipsHtml(["今日早报", "热点标签", "布洛芬的结构式"]));
+  addMessage("ai", `你好,我是你的<b>化学智能体</b> ⚗️<br><span class="bubble-hint">我可以帮你分析化学资讯、解读文献、追踪研究热点。你现在可以:</span><ul><li>直接输入化学问题与我对话,支持中文化合物名和 SMILES</li><li>说「<b>早报</b>」「<b>热点标签</b>」「<b>为我推荐</b>」获取今日内容</li><li>问我「<b>布洛芬的结构式</b>」或输入 <b>/mol 布洛芬</b>,我会画出 3D 分子模型 🧬</li><li>问我具体反应(如「甲烷燃烧」),附方程式与 3D 反应演示</li><li>输入 <b>/news</b> 唤起新闻文献面板;选中面板文本可一键解读,把卡片 ⠿ 拖到对话区我会阅读原文网页</li><li>读过的网页自动存入 <b>📚 知识库</b>,勾选后可跨多篇综合提问</li></ul>试试这些:` + suggestChipsHtml(["今日早报", "热点标签", "布洛芬的结构式"]));
   // 新闻骨架屏
   masonryEl.innerHTML = Array.from({ length: 3 }, () => `
     <div class="story skeleton-card" aria-hidden="true">
@@ -2584,6 +2730,8 @@ pteOverlay.addEventListener("click", (e) => { if (e.target === pteOverlay) pteOv
   renderNews("all");
   trackVisitor();
   loadRanking();
+  // 恢复知识库徽标
+  $("kbCount").textContent = knowledgeBase.length;
   // 今日分子开机卡(每天首次打开显示一次,延迟一点让 3Dmol 库就绪)
   setTimeout(showMotd, 900);
 })();
