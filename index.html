@@ -1891,8 +1891,8 @@ $("expReportGen").addEventListener("click", async () => {
           <div class="mol-section-title">4. 实验注意事项</div>
           <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${(d.notes||[]).map(n => '⚠️ ' + escapeHtml(n)).join('<br>') || '未提取到'}</div>
         </div>`;
-      // 延迟触发 MathJax 渲染,确保 DOM 已更新
-      setTimeout(() => typesetMath($("expReportContent")), 100);
+      // 触发 MathJax 渲染化学方程式(typesetClear 确保重新处理)
+      typesetMath($("expReportContent"));
       $("expReportConfirm").style.display = "block";
       $("expReportGen").textContent = "🔄 换一条新闻";
     } else {
@@ -2226,6 +2226,7 @@ function scrollChat() { chatScroll.scrollTop = chatScroll.scrollHeight; }
 // 渲染气泡内的数学/化学公式(MathJax 异步加载,未就绪时延迟重试)
 function typesetMath(el, retries = 5) {
   if (window.MathJax && window.MathJax.typesetPromise) {
+    try { window.MathJax.typesetClear([el]); } catch(e) {}
     window.MathJax.typesetPromise([el]).catch(() => {});
   } else if (retries > 0) {
     setTimeout(() => typesetMath(el, retries - 1), 400);
