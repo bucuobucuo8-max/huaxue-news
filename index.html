@@ -1240,6 +1240,7 @@ body.dragging { cursor: col-resize; user-select: none; }
       <button class="news-toggle" id="subToggle">🔔 订阅</button>
       <button class="news-toggle" id="canvasToggle">📐 研究画布</button>
       <button class="news-toggle" id="settingsToggle">⚙️ 设置</button>
+      <button class="news-toggle" id="expReportToggle">📋 实验报告</button>
       <button class="news-toggle" id="newsToggle">📰 新闻文献</button>
     </div>
   </header>
@@ -1442,6 +1443,24 @@ body.dragging { cursor: col-resize; user-select: none; }
         <button class="kb-clear" id="clearKB">清除知识库</button>
         <button class="kb-clear" id="clearAll">清除所有本地数据</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- 实验报告面板 -->
+<div class="pte-overlay" id="expReportOverlay" hidden>
+  <div class="pte-card" style="width:min(94vw,680px);max-height:92vh;">
+    <div class="pte-head">
+      <h3>📋 每日实验报告</h3>
+      <button class="motd-close" id="expReportClose" title="关闭">✕</button>
+    </div>
+    <div class="kb-hint">系统每天从今日新闻中自动筛选一个实验,生成结构化报告。审核确认后可导出 Word 文档。</div>
+    <div id="expReportContent" style="overflow-y:auto;max-height:60vh;">
+      <div class="bubble-hint" style="text-align:center;padding:40px 0;">点击下方按钮生成今日实验报告</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:12px;">
+      <button class="pte-ask" id="expReportGen" style="flex:1;text-align:center;">🔄 生成实验报告</button>
+      <button class="pte-ask" id="expReportConfirm" style="flex:1;text-align:center;display:none;">✅ 确认并导出 Word</button>
     </div>
   </div>
 </div>
@@ -1826,6 +1845,102 @@ settingsOverlay.addEventListener("click", (e) => { if (e.target === settingsOver
 $("clearCache").addEventListener("click", () => { if (caches) caches.delete("chem-agent-v1"); alert("API 缓存已清除"); });
 $("clearKB").addEventListener("click", async () => { knowledgeBase = []; await kbSave(); renderKBList(); alert("知识库已清除"); });
 $("clearAll").addEventListener("click", () => { if (confirm("确定清除所有本地数据?包含收藏、知识库、画布、设置。")) { localStorage.clear(); indexedDB.deleteDatabase("chem_kb"); location.reload(); } });
+
+// ===== 实验报告 =====
+let expReportData = null;
+const expReportOverlay = $("expReportOverlay");
+$("expReportToggle").addEventListener("click", () => { expReportOverlay.hidden = false; });
+$("expReportClose").addEventListener("click", () => { expReportOverlay.hidden = true; });
+expReportOverlay.addEventListener("click", (e) => { if (e.target === expReportOverlay) expReportOverlay.hidden = true; });
+$("expReportGen").addEventListener("click", async () => {
+  if (newsData.length === 0) { $("expReportContent").innerHTML = '<div class="bubble-hint" style="text-align:center;padding:20px;">新闻数据未加载,请先打开新闻面板加载。</div>'; return; }
+  // 筛选实验/研究类新闻(research 类型优先,排除纯商业新闻)
+  const candidates = newsData.filter(n => n.type === "research" || /experiment|synthesis|catalyst|reaction|synthesi|制备|合成|催化|反应/.test(n.title + (n.summary||'')));
+  const pick = (candidates.length > 0 ? candidates : newsData)[Math.floor(Math.random() * Math.min(candidates.length || newsData.length, 10))];
+  $("expReportGen").textContent = "⏳ 正在抓取网页并生成报告...";
+  $("expReportGen").disabled = true;
+  $("expReportContent").innerHTML = '<div class="bubble-hint" style="text-align:center;padding:30px;">🔍 正在抓取新闻网页正文...<br>🤖 DeepSeek 正在分析实验内容...</div>';
+  try {
+    const resp = await fetch("/api/experiment-report", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: pick.title, url: pick.url, summary: pick.summary, source: pick.source, time: pick.time }),
+    });
+    const json = await resp.json();
+    if (json.code === 200 && json.data) {
+      expReportData = json.data;
+      const d = json.data;
+      $("expReportContent").innerHTML = `
+        <div class="mol-section">
+          <div class="mol-section-title">1. 新闻标题与来源</div>
+          <div style="font-size:14px;font-weight:700;color:var(--text);line-height:1.5;">${escapeHtml(d.title || pick.title)}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px;">📅 ${escapeHtml(d.time || pick.time || '未知')} · 📰 ${escapeHtml(pick.source || '')}</div>
+          <div style="font-size:12px;color:var(--cyan);margin-top:4px;">👥 ${escapeHtml(d.team || '未提及')}</div>
+        </div>
+        <div class="mol-section">
+          <div class="mol-section-title">2. 试剂与器材</div>
+          <div style="font-size:12.5px;font-weight:700;color:var(--violet);margin-bottom:4px;">试剂:</div>
+          <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${(d.reagents||[]).map(r => '• ' + escapeHtml(r)).join('<br>') || '未提取到'}</div>
+          <div style="font-size:12.5px;font-weight:700;color:var(--violet);margin:8px 0 4px;">器材:</div>
+          <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${(d.equipment||[]).map(e => '• ' + escapeHtml(e)).join('<br>') || '未提取到'}</div>
+        </div>
+        <div class="mol-section">
+          <div class="mol-section-title">3. 反应机理 / 方程式</div>
+          <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${escapeHtml(d.mechanism || '未提取到')}</div>
+        </div>
+        <div class="mol-section">
+          <div class="mol-section-title">4. 实验注意事项</div>
+          <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${(d.notes||[]).map(n => '⚠️ ' + escapeHtml(n)).join('<br>') || '未提取到'}</div>
+        </div>`;
+      $("expReportConfirm").style.display = "block";
+      $("expReportGen").textContent = "🔄 换一条新闻";
+    } else {
+      $("expReportContent").innerHTML = `<div class="bubble-hint" style="text-align:center;padding:20px;">⚠️ ${escapeHtml(json.message || '生成失败')}</div>`;
+      $("expReportGen").textContent = "🔄 重新生成";
+    }
+  } catch (e) {
+    $("expReportContent").innerHTML = `<div class="bubble-hint" style="text-align:center;padding:20px;">⚠️ 网络错误: ${escapeHtml(e.message)}</div>`;
+    $("expReportGen").textContent = "🔄 重新生成";
+  }
+  $("expReportGen").disabled = false;
+});
+// 确认 -> 生成 Word 文档(.doc,Word 可直接打开)
+$("expReportConfirm").addEventListener("click", () => {
+  if (!expReportData) return;
+  const d = expReportData;
+  const now = new Date().toLocaleString('zh-CN');
+  // 生成 HTML 格式的 .doc 文件(Word 完美兼容)
+  const html = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"><title>实验报告</title>
+<style>body{font-family:'宋体',SimSun,serif;font-size:14px;line-height:1.8;margin:40px 72px;}h1{font-size:22pt;text-align:center;border-bottom:2pt solid #333;padding-bottom:10pt;}h2{font-size:14pt;color:#1a5276;border-left:4pt solid #1a5276;padding-left:8pt;margin-top:20pt;}table{border-collapse:collapse;width:100%;margin:8pt 0;}td{border:1pt solid #999;padding:6pt 10pt;}.note{color:#c0392b;}.header{text-align:right;font-size:10pt;color:#666;}</style>
+</head><body>
+<h1>化学实验报告</h1>
+<div class="header">生成时间: ${now} · 化学智能体学习站</div>
+<h2>一、新闻标题与来源</h2>
+<table><tr><td style="width:100pt;font-weight:bold;">标题</td><td>${d.title || ''}</td></tr>
+<tr><td style="font-weight:bold;">时间</td><td>${d.time || ''}</td></tr>
+<tr><td style="font-weight:bold;">来源</td><td>${d.source || ''}</td></tr>
+<tr><td style="font-weight:bold;">研究团队</td><td>${d.team || '未提及'}</td></tr></table>
+<h2>二、试剂与器材</h2>
+<p><b>试剂:</b></p>
+<ul>${(d.reagents||[]).map(r => `<li>${r}</li>`).join('') || '<li>未提取到</li>'}</ul>
+<p><b>器材:</b></p>
+<ul>${(d.equipment||[]).map(e => `<li>${e}</li>`).join('') || '<li>未提取到</li>'}</ul>
+<h2>三、反应机理与方程式</h2>
+<p>${(d.mechanism || '未提取到').replace(/\n/g, '<br>')}</p>
+<h2>四、实验注意事项</h2>
+<ul class="note">${(d.notes||[]).map(n => `<li>${n}</li>`).join('') || '<li>未提取到</li>'}</ul>
+<br><hr><p style="text-align:center;font-size:10pt;color:#999;">本报告由 AI 自动生成,仅供参考。实验前请核实原始文献并遵守实验室安全规范。</p>
+</body></html>`;
+  const blob = new Blob(['\ufeff' + html], { type: 'application/msword' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `实验报告_${(d.title||'').substring(0,20).replace(/[^\w\u4e00-\u9fa5]/g,'_')}_${new Date().toISOString().slice(0,10)}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+  // 在对话区也反馈
+  addMessage("ai", `📋 实验报告已导出为 Word 文档,请检查下载文件夹。报告基于新闻《${escapeHtml(d.title||'')}》生成。`);
+});
 
 // 文献关系图谱:用 Canvas 绘制知识库文献的主题关联网络
 const graphOverlay = $("graphOverlay");
