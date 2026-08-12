@@ -2,19 +2,13 @@ name = "huaxue-news"
 compatibility_date = "2024-01-01"
 pages_build_output_dir = "."
 
-# === 以下配置需要你在 Cloudflare 控制台创建对应资源后启用 ===
-
 # D1 数据库(订阅 + 用户数据)
-# 1. 控制台创建 D1: npx wrangler d1 create chem-agent-db
-# 2. 将返回的 database_id 填入下方
-# 3. 执行迁移: npx wrangler d1 execute chem-agent-db --file=migrations/0001_init.sql
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "chem-agent-db"
-# database_id = "填入你的D1_ID"
+[[d1_databases]]
+binding = "DB"
+database_name = "chem-agent-db"
+database_id = "87a97ddd-124b-4916-8420-e1e978635db1"
 
-# R2 存储(论文附件缓存)
-# npx wrangler r2 bucket create chem-agent-cache
+# R2 存储(论文附件缓存) - 创建后取消注释
 # [[r2_buckets]]
 # binding = "BUCKET"
 # bucket_name = "chem-agent-cache"
