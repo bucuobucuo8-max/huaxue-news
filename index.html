@@ -1885,14 +1885,14 @@ $("expReportGen").addEventListener("click", async () => {
         </div>
         <div class="mol-section">
           <div class="mol-section-title">3. 反应机理 / 方程式</div>
-          <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${d.mechanism || '未提取到'}</div>
+          <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${processMechanism(d.mechanism || '未提取到')}</div>
         </div>
         <div class="mol-section">
           <div class="mol-section-title">4. 实验注意事项</div>
           <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${(d.notes||[]).map(n => '⚠️ ' + escapeHtml(n)).join('<br>') || '未提取到'}</div>
         </div>`;
-      // 触发 MathJax 渲染化学方程式
-      typesetMath($("expReportContent"));
+      // 延迟触发 MathJax 渲染,确保 DOM 已更新
+      setTimeout(() => typesetMath($("expReportContent")), 100);
       $("expReportConfirm").style.display = "block";
       $("expReportGen").textContent = "🔄 换一条新闻";
     } else {
@@ -2224,14 +2224,29 @@ chatScroll.addEventListener("drop", (e) => {
 function scrollChat() { chatScroll.scrollTop = chatScroll.scrollHeight; }
 
 // 渲染气泡内的数学/化学公式(MathJax 异步加载,未就绪时延迟重试)
-function typesetMath(el) {
+function typesetMath(el, retries = 5) {
   if (window.MathJax && window.MathJax.typesetPromise) {
     window.MathJax.typesetPromise([el]).catch(() => {});
-  } else {
-    setTimeout(() => {
-      if (window.MathJax && window.MathJax.typesetPromise) window.MathJax.typesetPromise([el]).catch(() => {});
-    }, 1200);
+  } else if (retries > 0) {
+    setTimeout(() => typesetMath(el, retries - 1), 400);
   }
+}
+// 预处理反应机理文本:确保 \ce{} 包裹在数学模式中,MathJax 才能渲染
+function processMechanism(text) {
+  if (!text) return text;
+  // 1. 还原可能被双重转义的反斜杠
+  let t = text.replace(/\\\\/g, '\\');
+  // 2. 保护已在 \[...\] 或 \(...\) 内的数学区域
+  const mathBlocks = [];
+  t = t.replace(/(\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\))/g, (m) => {
+    mathBlocks.push(m);
+    return '\x00MATH' + (mathBlocks.length - 1) + '\x00';
+  });
+  // 3. 将裸 \ce{...} (不在数学模式中的) 包裹在 \(...\) 中
+  t = t.replace(/\\ce(\{[^}]*\})/g, '\\( \\ce$1 \\)');
+  // 4. 还原被保护的数学区域
+  t = t.replace(/\x00MATH(\d+)\x00/g, (_, i) => mathBlocks[parseInt(i)]);
+  return t;
 }
 
 function addMessage(role, html) {
