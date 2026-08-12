@@ -2095,31 +2095,21 @@ function renderCitations(html) {
   return html + refsHtml;
 }
 
-// 子结构/相似性搜索:PubChem 异步 API(提交 -> 轮询 ListKey -> 获取结果)
+// 子结构/相似性搜索:PubChem fast API(同步返回,无需轮询)
 async function pubchemSearch(smiles, type, resultsEl) {
-  if (!smiles) return;
-  resultsEl.innerHTML = '<span class="bubble-hint">搜索中...PubChem 异步查询可能需要 10-30 秒</span>';
+  if (!smiles) { resultsEl.innerHTML = '<span class="bubble-hint">无可用的 SMILES</span>'; return; }
+  resultsEl.innerHTML = '<span class="bubble-hint">搜索中...</span>';
   resultsEl.dataset.pending = "true";
   try {
-    const endpoint = type === 'substructure' ? 'substructure' : 'similarity';
+    const endpoint = type === 'substructure' ? 'fastsubstructure' : 'fastsimilarity';
     const url = type === 'substructure'
-      ? `${PUBCHEM}/${endpoint}/smiles/${encodeURIComponent(smiles)}/JSON?MaxRecords=5`
-      : `${PUBCHEM}/${endpoint}/smiles/${encodeURIComponent(smiles)}/JSON?MaxRecords=5&Threshold=90`;
-    let resp = await fetch(url);
-    if (!resp.ok) { resultsEl.innerHTML = '<span class="bubble-hint">搜索失败</span>'; return; }
-    let data = await resp.json();
-    // 若返回 Waiting/ListKey,需要轮询
-    if (data.Waiting && data.ListKey) {
-      for (let i = 0; i < 12; i++) {
-        await new Promise(r => setTimeout(r, 3000));
-        const pollResp = await fetch(`${PUBCHEM}/compound/list/${data.ListKey}/JSON`);
-        if (!pollResp.ok) continue;
-        const pollData = await pollResp.json();
-        if (!pollData.Waiting) { data = pollData; break; }
-      }
-    }
-    const cids = data.PropertyTable?.Properties?.map(p => p.CID) || data.IdentifierList?.CID || [];
-    if (cids.length === 0) { resultsEl.innerHTML = '<span class="bubble-hint">未找到匹配化合物</span>'; return; }
+      ? `${PUBCHEM}/${endpoint}/smiles/${encodeURIComponent(smiles)}/cids/JSON?MaxRecords=5`
+      : `${PUBCHEM}/${endpoint}/smiles/${encodeURIComponent(smiles)}/cids/JSON?MaxRecords=5&Threshold=80`;
+    const resp = await fetch(url);
+    if (!resp.ok) { resultsEl.innerHTML = `<span class="bubble-hint">搜索失败 (HTTP ${resp.status})</span>`; resultsEl.dataset.pending = "false"; return; }
+    const data = await resp.json();
+    const cids = data.IdentifierList?.CID || [];
+    if (cids.length === 0) { resultsEl.innerHTML = '<span class="bubble-hint">未找到相似/匹配化合物</span>'; resultsEl.dataset.pending = "false"; return; }
     // 获取前 5 个的名称
     const cidStr = cids.slice(0, 5).join(',');
     const propResp = await fetch(`${PUBCHEM}/cid/${cidStr}/property/MolecularFormula,IUPACName/JSON`);
@@ -2132,7 +2122,7 @@ async function pubchemSearch(smiles, type, resultsEl) {
       ? `<div class="mol-fg-list">${items.map(p => `<a class="mol-fg-tag" href="https://pubchem.ncbi.nlm.nih.gov/compound/${p.CID}" target="_blank" title="${escapeHtml(p.IUPACName || '')}">${escapeHtml(p.MolecularFormula || 'CID:'+p.CID)}</a>`).join('')}</div>`
       : `<span class="bubble-hint">找到 ${cids.length} 个匹配化合物</span>`;
   } catch (e) {
-    resultsEl.innerHTML = '<span class="bubble-hint">搜索超时或失败,请稍后重试</span>';
+    resultsEl.innerHTML = '<span class="bubble-hint">搜索失败,请稍后重试</span>';
   }
   resultsEl.dataset.pending = "false";
 }
@@ -2580,8 +2570,8 @@ function moleculeCardHtml(r) {
     ${r.note}🧬 <b>${escapeHtml(p.IUPACName || r.query)}</b>
     <div class="mol-chat">
       <span class="mol-img-wrap mol-3d-box" title="拖拽旋转 · 滚轮缩放">
-        <div class="mol-3d" data-cid="${p.CID}" data-fallback="${r.imgUrl}"><div class="mol-3d-loading">3D 加载中…</div></div>
-        <button class="mol-conf-btn" data-cid="${p.CID}" data-fallback="${r.imgUrl}" title="切换 2D/3D">2D</button>
+        <div class="mol-3d" data-cid="${p.CID}" data-smiles="${escapeHtml(p.IsomericSMILES || p.CanonicalSMILES || '')}" data-fallback="${r.imgUrl}"><div class="mol-3d-loading">3D 加载中…</div></div>
+        <button class="mol-conf-btn" data-cid="${p.CID}" data-smiles="${escapeHtml(p.IsomericSMILES || p.CanonicalSMILES || '')}" data-fallback="${r.imgUrl}" title="切换 2D/3D">2D</button>
       </span>
       <dl class="mol-chat-props">
         <div class="mol-prop"><dt>分子式</dt><dd>${escapeHtml(p.MolecularFormula || "-")}</dd></div>
@@ -2627,29 +2617,45 @@ function moleculeCardHtml(r) {
     <span class="bubble-hint">数据源:PubChem CID ${p.CID} · 3D 模型可拖拽旋转 · 想进一步了解它的性质?直接继续问我。</span>`;
 }
 
-// 初始化 3D 分子查看器(3Dmol.js + PubChem 3D 坐标)
+// 初始化 3D 分子查看器(优先 PubChem 3D SDF,备选 SMILES 直接生成)
 async function initMol3D(container) {
   const cid = container.dataset.cid;
+  const smiles = container.dataset.smiles;
   const fallback = container.dataset.fallback;
   const showFallback = () => { container.innerHTML = `<img src="${fallback}" alt="2D 结构式">`; };
-  if (!window.$3Dmol || !cid) { showFallback(); return; }
-  try {
-    const resp = await cachedFetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF?record_type=3d`);
-    if (!resp.ok) throw new Error("no 3d");
-    const sdf = await resp.text();
-    if (!sdf || sdf.length < 50) throw new Error("empty");
+  if (!window.$3Dmol) { showFallback(); return; }
+
+  const render3D = (model, format) => {
     container.innerHTML = "";
     const viewer = window.$3Dmol.createViewer(container, { backgroundColor: "#f4f8fb" });
-    viewer.addModel(sdf, "sdf");
+    viewer.addModel(model, format);
     viewer.setStyle({}, { stick: { radius: 0.15 }, sphere: { scale: 0.3 } });
     viewer.zoomTo();
-    viewer.spin("y", 0.5); // 缓慢自转展示
+    viewer.spin("y", 0.5);
     viewer.render();
-  } catch {
-    // WebGL 不可用或加载失败:显示 2D 图 + 友好提示
-    showFallback();
-    container.title = "3D 渲染不可用(可能不支持 WebGL),已切换为 2D 结构式";
+  };
+
+  // 优先:PubChem 3D SDF(质量最高)
+  if (cid) {
+    try {
+      const resp = await cachedFetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF?record_type=3d`);
+      if (resp.ok) {
+        const sdf = await resp.text();
+        if (sdf && sdf.length > 50) { render3D(sdf, "sdf"); return; }
+      }
+    } catch {}
   }
+
+  // 备选:SMILES -> 3Dmol 直接生成(3Dmol 内置力场优化)
+  if (smiles) {
+    try {
+      render3D(smiles, "smiles");
+      return;
+    } catch {}
+  }
+
+  // 最后回退:2D 结构图
+  showFallback();
 }
 
 // 构象切换:2D 结构图 <-> 3D 球棍模型
@@ -2690,13 +2696,25 @@ function reactionCardHtml(rxnExpr) {
     </div>`;
 }
 
-// 初始化反应演示:按 SMILES 从 PubChem 取 3D 坐标渲染小球棍查看器
+// 初始化反应演示:按 SMILES 优先 PubChem 3D SDF,备选 SMILES 直接生成
 async function initReaction(stage) {
   stage.querySelectorAll(".rxn-mol").forEach(async (el) => {
     const smiles = el.dataset.smiles;
     const showFallback = () => { el.innerHTML = `<div class="rxn-mol-fallback">${escapeHtml(smiles)}</div>`; };
     if (!window.$3Dmol) { showFallback(); return; }
-    // SMILES 取 3D 坐标,失败则按名称再试(模型可能输出 CH4 这类非标准 SMILES)
+
+    const render3D = (model, format) => {
+      el.innerHTML = "";
+      const viewer = window.$3Dmol.createViewer(el, { backgroundColor: "#f4f8fb" });
+      viewer.addModel(model, format);
+      viewer.setStyle({}, { stick: { radius: 0.16, colorscheme: "greenCarbon" }, sphere: { scale: 0.3 } });
+      viewer.addLabel(smiles.split(".")[0].substring(0, 12), { fontSize: 9, position: { x: 0, y: 0, z: 0 }, backgroundColor: "rgba(0,0,0,0.7)", fontColor: "white" });
+      viewer.zoomTo();
+      viewer.spin("y", 0.5);
+      viewer.render();
+    };
+
+    // 优先:PubChem 3D SDF
     let sdf = "";
     for (const kind of ["smiles", "name"]) {
       try {
@@ -2707,21 +2725,13 @@ async function initReaction(stage) {
         }
       } catch {}
     }
-    if (!sdf) { showFallback(); return; }
-    try {
-      el.innerHTML = "";
-      const viewer = window.$3Dmol.createViewer(el, { backgroundColor: "#f4f8fb" });
-      viewer.addModel(sdf, "sdf");
-      viewer.setStyle({}, { stick: { radius: 0.16, colorscheme: "greenCarbon" }, sphere: { scale: 0.3 } });
-      viewer.addLabel(el.dataset.smiles.split(".")[0].substring(0, 12), { fontSize: 9, position: { x: 0, y: 0, z: 0 }, backgroundColor: "rgba(0,0,0,0.7)", fontColor: "white" });
-      viewer.zoomTo();
-      viewer.spin("y", 0.5);
-      viewer.render();
-    } catch {
-      // WebGL 不可用或加载失败:显示 SMILES 文本 + 友好提示
-      showFallback();
-      el.title = "3D 渲染不可用(可能不支持 WebGL),已切换为文本展示";
-    }
+    if (sdf) { try { render3D(sdf, "sdf"); return; } catch {} }
+
+    // 备选:SMILES -> 3Dmol 直接生成
+    try { render3D(smiles, "smiles"); return; } catch {}
+
+    // 最后回退:文本展示
+    showFallback();
   });
 }
 
