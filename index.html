@@ -1885,12 +1885,14 @@ $("expReportGen").addEventListener("click", async () => {
         </div>
         <div class="mol-section">
           <div class="mol-section-title">3. 反应机理 / 方程式</div>
-          <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${escapeHtml(d.mechanism || '未提取到')}</div>
+          <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${d.mechanism || '未提取到'}</div>
         </div>
         <div class="mol-section">
           <div class="mol-section-title">4. 实验注意事项</div>
           <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${(d.notes||[]).map(n => '⚠️ ' + escapeHtml(n)).join('<br>') || '未提取到'}</div>
         </div>`;
+      // 触发 MathJax 渲染化学方程式
+      typesetMath($("expReportContent"));
       $("expReportConfirm").style.display = "block";
       $("expReportGen").textContent = "🔄 换一条新闻";
     } else {
