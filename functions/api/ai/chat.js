@@ -209,6 +209,10 @@ export async function onRequestPost(context) {
   try {
     const body = await request.json();
     const message = (body.message || '').trim();
+    // 提示注入防护:移除可能操控 AI 行为的指令性文本
+    const sanitizedMessage = message
+      .replace(/\[SYSTEM\]|\[INST\]|\[\/INST\]|ignore (previous|above) instructions|忽略(以上|之前)指令|你现在是|pretend you are/gi, '')
+      .trim();
     if (!message) {
       return new Response(JSON.stringify({
         code: 400,
@@ -244,18 +248,23 @@ export async function onRequestPost(context) {
 
     // 联网检索:结构识别(PubChem)+ Wikipedia 摘要,并行执行,失败不影响主流程
     const [structureInfo, wikiInfo] = await Promise.all([
-      identifyStructure(message),
-      searchWikipedia(message),
+      identifyStructure(sanitizedMessage),
+      searchWikipedia(sanitizedMessage),
     ]);
     const webContext = [structureInfo, wikiInfo].filter(Boolean).join('\n');
 
-    // 检测特殊模式:深度阅读 / 对比分析
-    const isDeepRead = /深度阅读|解读论文|拆解这篇|详细分析这|精读/.test(message) && articles.length > 0;
-    const isCompare = /对比分析|比较这|对比这|证据矩阵|综合对比/.test(message) && articles.length >= 2;
+    // 检测特殊模式
+    const isDeepRead = /深度阅读|解读论文|拆解这篇|详细分析这|精读/.test(sanitizedMessage) && articles.length > 0;
+    const isCompare = /对比分析|比较这|对比这|证据矩阵|综合对比/.test(sanitizedMessage) && articles.length >= 2;
+    const isHypothesis = /提出假设|生成假设|假说|可验证假设/.test(sanitizedMessage);
+    const isExperiment = /实验设计|设计实验|实验方案|实验计划/.test(sanitizedMessage);
+    const isTimeline = /时间线|演变|发展历程|如何演变|观点演变/.test(sanitizedMessage);
+    const isControversy = /争议|矛盾|相互冲突|分歧/.test(sanitizedMessage);
+    const isAgentTask = /找出.{0,20}(进展|论文|研究).{0,20}(排除|比较|生成|报告|总结)|帮我.{0,10}(调研|检索|搜索|查).{0,20}(论文|文献|研究)/.test(sanitizedMessage);
 
     const systemPrompt =
       '你是「化学智能体」,一位面向化学专业学生与研究员的 AI 助手,运行在一个化学新闻简讯网站上。' +
-      '请用简体中文回答,风格:专业但通俗,适当使用 emoji,化学式/代号/人名保留原文。' +
+      '请用简体中文回答,风格:专业但通俗,适当使用 emoji,化学术语保留英文原文并附中文解释(如 "catalyst(催化剂)""electrophile(亲电试剂)"),避免翻译损失专业含义。' +
       '回答要求:1) 直接回答问题,不要说"作为AI";2) 一般问题控制在 200 字以内,需要详细解释时可适当延长;' +
       '3) 如果问题与今日新闻相关,主动引用下方新闻清单中的条目(用「标题」格式引用);' +
       '4) 与化学/材料/化工无关的问题,简短回答后引导回化学话题;' +
@@ -271,6 +280,22 @@ export async function onRequestPost(context) {
       (isCompare
         ? '\n12) 【对比分析模式】生成 Markdown 证据矩阵表格(用|分隔),列: 论文|研究问题|方法|样本/条件|关键结果|局限性|证据等级(A/B/C)。表格后用文字解释结果一致或冲突及差异来源。标注引用[1][2]。'
         : '') +
+      (isHypothesis
+        ? '\n13) 【假设生成器】基于知识库和已知文献,提出 2-3 个可验证的科学假设。每个假设包含: 假设陈述 / 依据(引用[1]) / 潜在反证 / 建议的验证实验(变量、对照、预期结果)。明确标注(模型推断)。'
+        : '') +
+      (isExperiment
+        ? '\n13) 【实验设计助手】输出结构化实验设计方案: 研究目标 / 自变量与因变量 / 实验组与对照组 / 样本量与重复 / 测量指标与方法 / 潜在混杂因素及控制 / 数据分析方案 / 所需仪器试剂。'
+        : '') +
+      (isTimeline
+        ? '\n13) 【结论时间线】按年份梳理某个科学观点/技术/发现的演变历程,输出 Markdown 时间线: **年份** - 关键事件/发现(引用来源) - 当时学界态度。标注哪些观点被后续推翻或修正。'
+        : '') +
+      (isControversy
+        ? '\n13) 【争议雷达】识别当前话题中相互矛盾的研究结论,输出: 争议焦点 / 支持方观点与证据(引用) / 反对方观点与证据(引用) / 差异来源分析(方法差异/样本差异/条件差异) / 当前共识(如有)。'
+        : '') +
+      (isAgentTask
+        ? '\n13) 【科研 Agent 工作流】用户提出了研究任务,请按步骤执行: 1. 搜索(基于今日新闻和知识库) 2. 去重筛选 3. 提取关键信息 4. 验证引用 5. 生成结构化报告。每步标注进度,允许用户检查。最终输出含引用的研究简报。'
+        : '') +
+      '\n14) 【证据等级评分】当评估文献或研究结论时,给出多维证据评分(不只是一个总分): 样本规模(大/中/小) / 研究类型(综述/RCT/观察/个案) / 期刊影响力 / 重复验证情况 / 撤稿记录。用表格展示。' +
       (attachSection
         ? '\n8) 用户附加了文献,请优先依据文献网页内容回答,并在回答开头注明依据的是哪篇文献(如「根据《标题》…」);若网页内容抓取失败,基于标题与摘要回答并说明;若附加了多篇文献,可以跨文献综合、对比、归纳回答;此时推荐追问应围绕附加文献。'
         : '') +
@@ -285,7 +310,7 @@ export async function onRequestPost(context) {
     const messages = [
       { role: 'system', content: systemPrompt },
       ...historyMsgs,
-      { role: 'user', content: message.slice(0, 2000) },
+      { role: 'user', content: sanitizedMessage.slice(0, 2000) },
     ];
 
     // 流式调用 DeepSeek(SSE),转发为纯文本流,前端打字机渲染

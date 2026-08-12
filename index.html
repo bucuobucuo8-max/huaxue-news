@@ -260,6 +260,8 @@ body::before {
 .mol-3d-box:active { cursor: grabbing; }
 .mol-3d { width: 100%; height: 100%; position: relative; }
 .mol-3d-loading { font-size: 11px; color: #5b7a8c; text-align: center; padding-top: 86px; }
+.mol-conf-btn { position: absolute; top: 6px; right: 6px; z-index: 5; appearance: none; border: 1px solid rgba(103,232,249,0.4); background: rgba(8,18,34,0.7); color: var(--cyan); border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; cursor: pointer; }
+.mol-conf-btn:hover { background: rgba(103,232,249,0.2); }
 .mol-section { margin-top: 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(103, 232, 249, 0.14); background: rgba(8, 18, 34, 0.35); }
 .mol-section-title { font-size: 12px; font-weight: 700; color: var(--cyan); margin-bottom: 8px; letter-spacing: 0.05em; }
 .mol-fg-list { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1224,6 +1226,7 @@ body.dragging { cursor: col-resize; user-select: none; }
       <span class="stats-chip" id="statsChip">加载中…</span>
       <button class="news-toggle" id="kbToggle">📚 知识库 <span class="kb-badge" id="kbCount">0</span></button>
       <button class="news-toggle" id="pteToggle">🧪 周期表</button>
+      <button class="news-toggle" id="graphToggle">🔬 文献图谱</button>
       <button class="news-toggle" id="newsToggle">📰 新闻文献</button>
     </div>
   </header>
@@ -1327,8 +1330,22 @@ body.dragging { cursor: col-resize; user-select: none; }
       <button class="kb-export" id="kbExportBib">📋 BibTeX</button>
       <button class="kb-export" id="kbExportRis">📋 RIS</button>
       <button class="kb-export" id="kbExportMd">📋 Markdown</button>
+      <button class="kb-export" id="kbExportShare">🔗 分享研究包</button>
       <button class="kb-clear" id="kbClear">🗑 清空知识库</button>
     </div>
+  </div>
+</div>
+
+<!-- 文献关系图谱 -->
+<div class="pte-overlay" id="graphOverlay" hidden>
+  <div class="pte-card" style="width:min(94vw,760px)">
+    <div class="pte-head">
+      <h3>🔬 文献关系图谱</h3>
+      <button class="motd-close" id="graphClose" title="关闭">✕</button>
+    </div>
+    <div class="kb-hint">基于当前知识库中的文献,展示它们之间的主题关联。节点大小反映关联度,颜色按来源分类。</div>
+    <div id="graphCanvas" style="height:400px;position:relative;border-radius:12px;border:1px solid rgba(103,232,249,0.15);background:rgba(3,8,20,0.4);overflow:hidden;"></div>
+    <div class="pte-hint" id="graphHint" style="margin-top:8px">添加更多文献到知识库可丰富图谱。拖拽节点可重排。</div>
   </div>
 </div>
 
@@ -1466,11 +1483,36 @@ const chatHistory = [];
 
 // ===== 会话知识库(sessionStorage 持久化,刷新不丢) =====
 let knowledgeBase = [];
-try { knowledgeBase = JSON.parse(sessionStorage.getItem("knowledge_base") || "[]"); } catch { knowledgeBase = []; }
-function saveKB() {
-  sessionStorage.setItem("knowledge_base", JSON.stringify(knowledgeBase));
-  $("kbCount").textContent = knowledgeBase.length;
+const KB_DB = "chem_kb", KB_STORE = "items";
+function kbDB() {
+  return new Promise((res) => {
+    const req = indexedDB.open(KB_DB, 1);
+    req.onupgradeneeded = (e) => { e.target.result.createObjectStore(KB_STORE, { keyPath: "url" }); };
+    req.onsuccess = (e) => res(e.target.result);
+    req.onerror = () => res(null);
+  });
 }
+async function kbLoad() {
+  const db = await kbDB(); if (!db) return;
+  return new Promise((res) => {
+    const tx = db.transaction(KB_STORE, "readonly");
+    const req = tx.objectStore(KB_STORE).getAll();
+    req.onsuccess = () => { knowledgeBase = req.result || []; $("kbCount").textContent = knowledgeBase.length; res(); };
+    req.onerror = () => res();
+  });
+}
+async function kbSave() {
+  const db = await kbDB(); if (!db) return;
+  return new Promise((res) => {
+    const tx = db.transaction(KB_STORE, "readwrite");
+    tx.objectStore(KB_STORE).clear();
+    knowledgeBase.forEach(k => tx.objectStore(KB_STORE).put(k));
+    tx.oncomplete = () => { $("kbCount").textContent = knowledgeBase.length; res(); };
+    tx.onerror = () => res();
+  });
+}
+// saveKB 保留为兼容别名
+function saveKB() { kbSave(); $("kbCount").textContent = knowledgeBase.length; }
 function addToKB(a) {
   if (!a || !a.url) return;
   if (knowledgeBase.some(k => k.url === a.url)) return;
@@ -1536,10 +1578,102 @@ function exportKB(format) {
 $("kbExportBib").addEventListener("click", () => exportKB('bibtex'));
 $("kbExportRis").addEventListener("click", () => exportKB('ris'));
 $("kbExportMd").addEventListener("click", () => exportKB('md'));
+$("kbExportShare").addEventListener("click", () => {
+  if (knowledgeBase.length === 0) return;
+  const refs = knowledgeBase.map((k, i) => `${i+1}. ${k.title}\n   ${k.url}`).join('\n');
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>化学研究包</title>
+<style>body{font-family:system-ui;max-width:680px;margin:40px auto;padding:20px;background:#0a0e1a;color:#e2f6ff;line-height:1.8}
+h1{color:#67e8f9}a{color:#7dd3fc}.ref{padding:10px 0;border-bottom:1px solid rgba(103,232,249,0.1)}</style>
+</head><body><h1>🧪 化学研究包</h1><p>由化学智能体学习站生成 · ${new Date().toLocaleString('zh-CN')}</p>
+<h2>参考文献 (${knowledgeBase.length})</h2>${knowledgeBase.map((k,i)=>`<div class="ref"><b>[${i+1}]</b> ${k.title}<br><a href="${k.url}" target="_blank">${k.url}</a><br><small>${k.source||''}</small></div>`).join('')}
+</body></html>`;
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'research_package.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
 const kbOverlay = $("kbOverlay");
 $("kbToggle").addEventListener("click", () => { renderKBList(); kbOverlay.hidden = false; });
 $("kbClose").addEventListener("click", () => { kbOverlay.hidden = true; });
 kbOverlay.addEventListener("click", (e) => { if (e.target === kbOverlay) kbOverlay.hidden = true; });
+
+// 文献关系图谱:用 Canvas 绘制知识库文献的主题关联网络
+const graphOverlay = $("graphOverlay");
+const graphCanvas = $("graphCanvas");
+$("graphToggle").addEventListener("click", () => { graphOverlay.hidden = false; drawGraph(); });
+$("graphClose").addEventListener("click", () => { graphOverlay.hidden = true; });
+graphOverlay.addEventListener("click", (e) => { if (e.target === graphOverlay) graphOverlay.hidden = true; });
+function drawGraph() {
+  const c = graphCanvas;
+  const W = c.clientWidth, H = 400;
+  c.innerHTML = `<canvas width="${W}" height="${H}" style="width:100%;height:100%"></canvas>`;
+  const cv = c.querySelector("canvas");
+  const ctx = cv.getContext("2d");
+  const items = knowledgeBase.length > 0 ? knowledgeBase : newsData.slice(0, 8).map(n => ({ title: n.title, url: n.url, source: n.source }));
+  if (items.length === 0) { ctx.fillStyle = "#5b7a8c"; ctx.font = "13px sans-serif"; ctx.textAlign = "center"; ctx.fillText("知识库为空,拖新闻卡片给 Agent 后再查看图谱", W/2, H/2); return; }
+  // 节点:圆形,按来源着色
+  const colors = ["#67e8f9", "#a78bfa", "#fbbf24", "#34d399", "#fb7185", "#f472b6"];
+  const nodes = items.map((it, i) => {
+    const angle = (i / items.length) * Math.PI * 2;
+    return { x: W/2 + Math.cos(angle) * 140, y: H/2 + Math.sin(angle) * 100, r: 18 + Math.random()*8, color: colors[i % colors.length], title: it.title, url: it.url, vx: 0, vy: 0 };
+  });
+  // 边:基于标题关键词重合度
+  const edges = [];
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i+1; j < nodes.length; j++) {
+      const w1 = nodes[i].title.toLowerCase().split(/\W+/).filter(w => w.length > 4);
+      const w2 = nodes[j].title.toLowerCase().split(/\W+/).filter(w => w.length > 4);
+      const overlap = w1.filter(w => w2.includes(w)).length;
+      if (overlap > 0) edges.push({ a: i, b: j, w: overlap });
+    }
+  }
+  // 力导向布局(简化:30 次迭代)
+  for (let iter = 0; iter < 40; iter++) {
+    nodes.forEach((n, i) => { n.fx = 0; n.fy = 0; });
+    // 斥力
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i+1; j < nodes.length; j++) {
+        const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+        const d = Math.sqrt(dx*dx + dy*dy) + 0.1;
+        const f = 800 / (d*d);
+        nodes[i].fx += dx/d * f; nodes[i].fy += dy/d * f;
+        nodes[j].fx -= dx/d * f; nodes[j].fy -= dy/d * f;
+      }
+    }
+    // 引力(边)
+    edges.forEach(e => {
+      const dx = nodes[e.a].x - nodes[e.b].x, dy = nodes[e.a].y - nodes[e.b].y;
+      const d = Math.sqrt(dx*dx + dy*dy) + 0.1;
+      const f = 0.02 * d * e.w;
+      nodes[e.a].fx -= dx/d * f; nodes[e.a].fy -= dy/d * f;
+      nodes[e.b].fx += dx/d * f; nodes[e.b].fy += dy/d * f;
+    });
+    // 中心引力
+    nodes.forEach(n => { n.fx += (W/2 - n.x) * 0.01; n.fy += (H/2 - n.y) * 0.01; });
+    // 更新
+    nodes.forEach(n => { n.x += n.fx * 0.5; n.y += n.fy * 0.5; n.x = Math.max(n.r+5, Math.min(W-n.r-5, n.x)); n.y = Math.max(n.r+5, Math.min(H-n.r-5, n.y)); });
+  }
+  // 绘制
+  ctx.clearRect(0, 0, W, H);
+  // 边
+  edges.forEach(e => {
+    ctx.strokeStyle = `rgba(103,232,249,${0.1 + e.w * 0.1})`;
+    ctx.lineWidth = Math.min(e.w, 3);
+    ctx.beginPath(); ctx.moveTo(nodes[e.a].x, nodes[e.a].y); ctx.lineTo(nodes[e.b].x, nodes[e.b].y); ctx.stroke();
+  });
+  // 节点
+  nodes.forEach(n => {
+    ctx.fillStyle = n.color + "33"; ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = n.color; ctx.lineWidth = 2; ctx.stroke();
+    // 标题(截断)
+    ctx.fillStyle = "#e2f6ff"; ctx.font = "10px sans-serif"; ctx.textAlign = "center";
+    const t = n.title.length > 20 ? n.title.substring(0, 18) + "…" : n.title;
+    ctx.fillText(t, n.x, n.y + n.r + 14);
+  });
+  $("graphHint").textContent = `${nodes.length} 篇文献, ${edges.length} 条关联(基于标题关键词重合度)。`;
+}
 
 // 调用 /api/ai/chat(流式),onUpdate 回调累计文本,最终返回完整回复
 async function streamAgentChat(text, onUpdate) {
@@ -2011,6 +2145,7 @@ function moleculeCardHtml(r) {
     <div class="mol-chat">
       <span class="mol-img-wrap mol-3d-box" title="拖拽旋转 · 滚轮缩放">
         <div class="mol-3d" data-cid="${p.CID}" data-fallback="${r.imgUrl}"><div class="mol-3d-loading">3D 加载中…</div></div>
+        <button class="mol-conf-btn" data-cid="${p.CID}" data-fallback="${r.imgUrl}" title="切换 2D/3D">2D</button>
       </span>
       <dl class="mol-chat-props">
         <div class="mol-prop"><dt>分子式</dt><dd>${escapeHtml(p.MolecularFormula || "-")}</dd></div>
@@ -2069,9 +2204,30 @@ async function initMol3D(container) {
     viewer.spin("y", 0.5); // 缓慢自转展示
     viewer.render();
   } catch {
+    // WebGL 不可用或加载失败:显示 2D 图 + 友好提示
     showFallback();
+    container.title = "3D 渲染不可用(可能不支持 WebGL),已切换为 2D 结构式";
   }
 }
+
+// 构象切换:2D 结构图 <-> 3D 球棍模型
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".mol-conf-btn");
+  if (!btn) return;
+  const container = btn.previousElementSibling;
+  if (!container) return;
+  const is3D = container.querySelector("canvas") !== null;
+  if (is3D) {
+    // 切换到 2D
+    container.innerHTML = `<img src="${btn.dataset.fallback}" alt="2D 结构式" style="max-width:92%;max-height:92%;margin:4%">`;
+    btn.textContent = "3D";
+  } else {
+    // 切换到 3D
+    btn.textContent = "2D";
+    container.innerHTML = '<div class="mol-3d-loading">3D 加载中…</div>';
+    initMol3D(container);
+  }
+});
 
 // ===== 化学反应演示卡片(反应物 ⇌ 生成物 循环变换 3D 球棍模型) =====
 function reactionCardHtml(rxnExpr) {
@@ -2119,7 +2275,9 @@ async function initReaction(stage) {
       viewer.spin("y", 0.5);
       viewer.render();
     } catch {
+      // WebGL 不可用或加载失败:显示 SMILES 文本 + 友好提示
       showFallback();
+      el.title = "3D 渲染不可用(可能不支持 WebGL),已切换为文本展示";
     }
   });
 }
@@ -2877,6 +3035,17 @@ pteOverlay.addEventListener("click", (e) => { if (e.target === pteOverlay) pteOv
    初始化
    ========================================================= */
 (async function init() {
+  // Service Worker 注册(离线阅读)
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+  // 无障碍:Escape 关闭所有 overlay 面板
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      [motdOverlay, pteOverlay, kbOverlay, graphOverlay].forEach(o => { if (o) o.hidden = true; });
+      if (workspace.classList.contains('news-open')) closeNewsPanel();
+    }
+  });
   // 欢迎消息
   addMessage("ai", `你好,我是你的<b>化学智能体</b> ⚗️<br><span class="bubble-hint">我可以帮你分析化学资讯、解读文献、追踪研究热点。你现在可以:</span><ul><li>直接输入化学问题与我对话,支持中文化合物名和 SMILES</li><li>说「<b>早报</b>」「<b>热点标签</b>」「<b>为我推荐</b>」获取今日内容</li><li>问我「<b>布洛芬的结构式</b>」或输入 <b>/mol 布洛芬</b>,我会画出 3D 分子模型 🧬</li><li>问我具体反应(如「甲烷燃烧」),附方程式与 3D 反应演示</li><li>输入 <b>/news</b> 唤起新闻文献面板;选中面板文本可一键解读,把卡片 ⠿ 拖到对话区我会阅读原文网页</li><li>读过的网页自动存入 <b>📚 知识库</b>,勾选后可跨多篇综合提问</li></ul>试试这些:` + suggestChipsHtml(["今日早报", "热点标签", "布洛芬的结构式"]));
   // 新闻骨架屏
@@ -2891,7 +3060,7 @@ pteOverlay.addEventListener("click", (e) => { if (e.target === pteOverlay) pteOv
   trackVisitor();
   loadRanking();
   // 恢复知识库徽标
-  $("kbCount").textContent = knowledgeBase.length;
+  kbLoad();
   // 今日分子开机卡(每天首次打开显示一次,延迟一点让 3Dmol 库就绪)
   setTimeout(showMotd, 900);
 })();

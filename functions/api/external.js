@@ -192,7 +192,7 @@ async function fetchCrossref() {
     const items = data.message?.items || [];
     for (const item of items) {
       const title = cleanHtml(item.title?.[0] || '');
-      const doi = item.DOI || '';
+      const doi = (item.DOI || '').trim().toLowerCase();
       const url = doi ? `https://doi.org/${doi}` : '';
       if (!isValidArticle(title, url)) continue;
       const abstract = cleanHtml(item.abstract || '').substring(0, 200);
@@ -243,7 +243,7 @@ async function fetchOpenAlex() {
     const results = [];
     for (const item of (data.results || [])) {
       const title = cleanHtml(item.title || '');
-      const doi = item.doi || '';
+      const doi = (item.doi || '').trim().toLowerCase();
       const url = doi ? doi : '';
       if (!isValidArticle(title, url)) continue;
       let abstract = '';
@@ -346,6 +346,17 @@ export async function onRequestGet(context) {
       fetchOpenAlex(),
       fetchPubMed(),
     ]);
+
+    // 降级策略:若某数据源全部失败,记录但不中断;若全部失败,返回缓存或空结果
+    const sources = { GDELT: gdeltNews, Crossref: crossrefNews, OpenAlex: openalexNews, PubMed: pubmedNews };
+    const failedSources = Object.entries(sources).filter(([, v]) => !v || v.length === 0).map(([k]) => k);
+    if (failedSources.length === 4) {
+      // 全部失败:尝试返回缓存(即使过期)
+      try {
+        const cached = await cache.match(cacheKey);
+        if (cached) return cached;
+      } catch {}
+    }
 
     let allNews = [...gdeltNews, ...crossrefNews, ...openalexNews, ...pubmedNews];
 
