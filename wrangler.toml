@@ -13,9 +13,9 @@ database_id = "YOUR_D1_DATABASE_ID"
 binding = "BUCKET"
 bucket_name = "chem-agent-cache"
 
-# Cron Trigger(定时检查订阅更新)
-[triggers]
-crons = ["0 */6 * * *"]
+# Cron Trigger:在 Cloudflare Pages 控制台 Settings -> Functions -> Cron Triggers 中配置
+# 表达式: 0 */6 * * * (每6小时检查一次订阅更新)
+# 对应函数: functions/cron/check-updates.js
 
 [vars]
 DEEPSEEK_MODEL = "deepseek-chat"
