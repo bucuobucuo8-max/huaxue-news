@@ -260,6 +260,17 @@ body::before {
 .mol-3d-box:active { cursor: grabbing; }
 .mol-3d { width: 100%; height: 100%; position: relative; }
 .mol-3d-loading { font-size: 11px; color: #5b7a8c; text-align: center; padding-top: 86px; }
+.mol-section { margin-top: 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(103, 232, 249, 0.14); background: rgba(8, 18, 34, 0.35); }
+.mol-section-title { font-size: 12px; font-weight: 700; color: var(--cyan); margin-bottom: 8px; letter-spacing: 0.05em; }
+.mol-fg-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.mol-fg-tag { display: inline-block; padding: 3px 10px; border-radius: 8px; font-size: 11.5px; background: rgba(167, 139, 250, 0.15); border: 1px solid rgba(167, 139, 250, 0.3); color: #c4b5fd; }
+.admet-grade { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; border: 1px solid; background: rgba(8, 18, 34, 0.4); margin-bottom: 8px; }
+.admet-badge { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; color: #0a0e1a; font-weight: 900; font-size: 14px; }
+.admet-desc { font-size: 12.5px; color: var(--text); }
+.admet-rules { display: flex; flex-wrap: wrap; gap: 8px; }
+.admet-rule { font-size: 11.5px; padding: 3px 10px; border-radius: 8px; }
+.admet-rule.pass { background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); color: #34d399; }
+.admet-rule.fail { background: rgba(251, 113, 133, 0.15); border: 1px solid rgba(251, 113, 133, 0.3); color: #fb7185; }
 /* 化学反应演示卡片:反应物与生成物同屏展示,动画箭头指向生成方向 */
 .rxn-stage {
   position: relative;
@@ -1827,9 +1838,60 @@ const PUBCHEM = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound";
 
 // 根据输入形态决定查询方式优先级:纯分子式 → fastformula;含 SMILES 特征字符 → smiles;其余按名称(三种方式依次尝试,保证命中)
 function molQueryKinds(q) {
+  if (q.startsWith("InChI=")) return ["inchi", "name", "smiles"];
   if (/^([A-Z][a-z]?\d*)+$/.test(q)) return ["fastformula", "name", "smiles"];
   if (/[()=#\[\]@\\\/+]/.test(q)) return ["smiles", "name", "fastformula"];
   return ["name", "smiles", "fastformula"];
+}
+
+// 官能团识别:基于 SMILES 模式匹配
+const FUNCTIONAL_GROUPS = [
+  { name: "羟基 -OH", pattern: /O[Hh](?![a-z])/i, cat: "醇/酚" },
+  { name: "羧基 -COOH", pattern: /C\(=O\)O[Hh]/i, cat: "羧酸" },
+  { name: "酯基 -COO-", pattern: /C\(=O\)O[Cc]/i, cat: "酯" },
+  { name: "醛基 -CHO", pattern: /C\(=O\)[Hh](?![a-z])/i, cat: "醛" },
+  { name: "酮基 C=O", pattern: /C\(=O\)[Cc]/i, cat: "酮" },
+  { name: "酰胺 -CONH-", pattern: /C\(=O\)N/i, cat: "酰胺" },
+  { name: "氨基 -NH2", pattern: /N[Hh]?(?![a-z=#[(])/i, cat: "胺" },
+  { name: "硝基 -NO2", pattern: /\[N\+\]\(=O\)\[O-\]|N\(=O\)=O/i, cat: "硝基" },
+  { name: "氰基 -CN", pattern: /C#N/i, cat: "腈" },
+  { name: "双键 C=C", pattern: /C=C(?!O)/i, cat: "烯烃" },
+  { name: "三键 C≡C", pattern: /C#C/i, cat: "炔烃" },
+  { name: "苯环", pattern: /c1ccccc1/i, cat: "芳香烃" },
+  { name: "硫醇 -SH", pattern: /S[Hh](?![a-z])/i, cat: "硫醇" },
+  { name: "磺酸基 -SO3H", pattern: /S\(=O\)\(=O\)O/i, cat: "磺酸" },
+  { name: "卤素", pattern: /F|Cl|Br|I/i, cat: "卤代物" },
+];
+function identifyFunctionalGroups(smiles) {
+  if (!smiles) return [];
+  const found = []; const seen = new Set();
+  for (const fg of FUNCTIONAL_GROUPS) {
+    if (fg.pattern.test(smiles) && !seen.has(fg.cat)) { seen.add(fg.cat); found.push(fg); }
+  }
+  return found;
+}
+
+// ADMET 预估:Lipinski 五规则 + Veber 规则 + 类药性评级
+function assessADMET(p) {
+  const mw = parseFloat(p.MolecularWeight) || 0;
+  const logp = parseFloat(p.XLogP) || 0;
+  const hbd = parseInt(p.HBondDonorCount ?? -1);
+  const hba = parseInt(p.HBondAcceptorCount ?? -1);
+  const tpsa = parseFloat(p.TPSA) || -1;
+  const rotb = parseInt(p.RotatableBondCount ?? -1);
+  const lipV = [], veberV = [];
+  if (mw > 500) lipV.push("MW > 500");
+  if (logp > 5) lipV.push("LogP > 5");
+  if (hbd >= 0 && hbd > 5) lipV.push("HBD > 5");
+  if (hba >= 0 && hba > 10) lipV.push("HBA > 10");
+  if (rotb >= 0 && rotb > 10) veberV.push("可旋转键 > 10");
+  if (tpsa >= 0 && tpsa > 140) veberV.push("TPSA > 140");
+  let grade, color, desc;
+  if (lipV.length === 0 && veberV.length === 0) { grade = "A"; color = "#34d399"; desc = "优秀:符合口服生物利用度标准"; }
+  else if (lipV.length <= 1 && veberV.length === 0) { grade = "B"; color = "#a3e635"; desc = "良好:可能有口服活性"; }
+  else if (lipV.length <= 2) { grade = "C"; color = "#fbbf24"; desc = "中等:口服吸收可能受限"; }
+  else { grade = "D"; color = "#fb7185"; desc = "差:不适合口服给药"; }
+  return { mw, logp, hbd, hba, tpsa, rotb, lipV, veberV, grade, color, desc };
 }
 
 // 查询分子结构,返回 { imgUrl, prop, note, query } 或 { error }
@@ -1858,7 +1920,7 @@ async function fetchMolecule(query) {
   }
   for (const kind of molQueryKinds(query)) {
     try {
-      const resp = await fetch(`${PUBCHEM}/${kind}/${encodeURIComponent(query)}/property/MolecularFormula,MolecularWeight,IUPACName,IsomericSMILES/JSON`);
+      const resp = await fetch(`${PUBCHEM}/${kind}/${encodeURIComponent(query)}/property/MolecularFormula,MolecularWeight,IUPACName,IsomericSMILES,CanonicalSMILES,InChI,InChIKey,XLogP,TPSA,HBondDonorCount,HBondAcceptorCount,RotatableBondCount,HeavyAtomCount,Complexity,Charge/JSON`);
       if (!resp.ok) continue;
       const json = await resp.json();
       const prop = json.PropertyTable && json.PropertyTable.Properties && json.PropertyTable.Properties[0];
@@ -1877,6 +1939,13 @@ async function fetchMolecule(query) {
 function moleculeCardHtml(r) {
   if (r.error) return `⚠️ ${escapeHtml(r.error)}`;
   const p = r.prop;
+  const fgList = identifyFunctionalGroups(p.IsomericSMILES || p.CanonicalSMILES || "");
+  const admet = assessADMET(p);
+  const fgHtml = fgList.length > 0
+    ? `<div class="mol-fg-list">${fgList.map(f => `<span class="mol-fg-tag">${escapeHtml(f.name)}</span>`).join("")}</div>`
+    : '<span class="bubble-hint">未识别到常见官能团</span>';
+  const propsRow = (label, val, unit = "") => val !== undefined && val !== null && val !== "" && val >= 0
+    ? `<div class="mol-prop"><dt>${label}</dt><dd>${escapeHtml(String(val))}${unit}</dd></div>` : "";
   return `
     ${r.note}🧬 <b>${escapeHtml(p.IUPACName || r.query)}</b>
     <div class="mol-chat">
@@ -1886,10 +1955,39 @@ function moleculeCardHtml(r) {
       <dl class="mol-chat-props">
         <div class="mol-prop"><dt>分子式</dt><dd>${escapeHtml(p.MolecularFormula || "-")}</dd></div>
         <div class="mol-prop"><dt>分子量</dt><dd>${escapeHtml(String(p.MolecularWeight || "-"))} g/mol</dd></div>
-        <div class="mol-prop"><dt>SMILES</dt><dd>${escapeHtml(p.IsomericSMILES || "-")}</dd></div>
+        <div class="mol-prop"><dt>InChIKey</dt><dd style="font-size:11px">${escapeHtml(p.InChIKey || "-")}</dd></div>
+        <div class="mol-prop"><dt>SMILES</dt><dd style="font-size:11px;word-break:break-all">${escapeHtml(p.IsomericSMILES || "-")}</dd></div>
       </dl>
     </div>
-    <span class="bubble-hint">数据源:PubChem CID ${p.CID} · 3D 模型可拖拽旋转、滚轮缩放 · 想进一步了解它的性质?直接继续问我。</span>`;
+    <div class="mol-section">
+      <div class="mol-section-title">理化性质</div>
+      <dl class="mol-chat-props">
+        ${propsRow("XLogP", p.XLogP)}
+        ${propsRow("TPSA", p.TPSA, " Å²")}
+        ${propsRow("H 供体", p.HBondDonorCount)}
+        ${propsRow("H 受体", p.HBondAcceptorCount)}
+        ${propsRow("可旋转键", p.RotatableBondCount)}
+        ${propsRow("重原子数", p.HeavyAtomCount)}
+        ${propsRow("复杂度", p.Complexity)}
+        ${propsRow("电荷", p.Charge)}
+      </dl>
+    </div>
+    <div class="mol-section">
+      <div class="mol-section-title">官能团识别</div>
+      ${fgHtml}
+    </div>
+    <div class="mol-section">
+      <div class="mol-section-title">ADMET 类药性评估</div>
+      <div class="admet-grade" style="border-color:${admet.color}">
+        <span class="admet-badge" style="background:${admet.color}">${admet.grade}</span>
+        <span class="admet-desc">${escapeHtml(admet.desc)}</span>
+      </div>
+      <div class="admet-rules">
+        <span class="admet-rule ${admet.lipV.length === 0 ? "pass" : "fail"}">Lipinski: ${admet.lipV.length === 0 ? "✓ 通过" : admet.lipV.join(", ")}</span>
+        <span class="admet-rule ${admet.veberV.length === 0 ? "pass" : "fail"}">Veber: ${admet.veberV.length === 0 ? "✓ 通过" : admet.veberV.join(", ")}</span>
+      </div>
+    </div>
+    <span class="bubble-hint">数据源:PubChem CID ${p.CID} · 3D 模型可拖拽旋转 · 想进一步了解它的性质?直接继续问我。</span>`;
 }
 
 // 初始化 3D 分子查看器(3Dmol.js + PubChem 3D 坐标)
