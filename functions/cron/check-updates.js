@@ -33,7 +33,7 @@ export async function onSchedule(event, env) {
         (n.title || '').toLowerCase().includes(keyword)
       );
 
-      const newMatches = [...new Set([...matches, ...retractions].map(n => n.title + '|' + n.url))].map(k => [...matches, ...retractions].find(n => (n.title + '|' + n.url) === k)).filter(Boolean).slice(0, 5);
+      const newMatches = [...matches, ...retractions].slice(0, 5);
 
       for (const match of newMatches) {
         // 避免重复通知

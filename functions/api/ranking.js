@@ -20,9 +20,9 @@ export async function onRequestGet(context) {
   try {
     const { env } = context;
 
-    // 从 favorites 表按收藏数降序取前10条
+    // 按收藏数降序取前10条
     const { results } = await env.DB.prepare(
-      'SELECT title as news_title, url as news_url, source as news_source, COUNT(*) as favorite_count FROM favorites GROUP BY title ORDER BY favorite_count DESC LIMIT 10'
+      'SELECT news_title, news_url, news_source, news_type, favorite_count FROM news_stats ORDER BY favorite_count DESC LIMIT 10'
     ).all();
 
     // 为每条记录添加排名序号

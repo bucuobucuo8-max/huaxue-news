@@ -1772,18 +1772,17 @@ async function loadCanvas() {
     });
   } catch {}
 }
-function saveCanvas() {
+async function saveCanvas() {
   try {
-    const req = indexedDB.open("chem_kb", 2);
-    req.onupgradeneeded = (e) => { if (!e.target.result.objectStoreNames.contains("canvas")) e.target.result.createObjectStore("canvas", { keyPath: "id" }); };
-    req.onsuccess = (e) => {
+    const db = await indexedDB.open("chem_kb", 2);
+    db.onupgradeneeded = (e) => { if (!e.target.result.objectStoreNames.contains("canvas")) e.target.result.createObjectStore("canvas", { keyPath: "id" }); };
+    db.onsuccess = (e) => {
       const d = e.target.result;
       if (!d.objectStoreNames.contains("canvas")) return;
       const tx = d.transaction("canvas", "readwrite");
       tx.objectStore("canvas").clear();
       canvasItems.forEach(it => tx.objectStore("canvas").put(it));
     };
-    req.onerror = () => {};
   } catch {}
 }
 function renderCanvas() {
@@ -2481,10 +2480,7 @@ const FUNCTIONAL_GROUPS = [
   { name: "苯环", pattern: /c1ccccc1/i, cat: "芳香烃" },
   { name: "硫醇 -SH", pattern: /S[Hh](?![a-z])/i, cat: "硫醇" },
   { name: "磺酸基 -SO3H", pattern: /S\(=O\)\(=O\)O/i, cat: "磺酸" },
-  { name: "氟代物", pattern: /(?<![[A-Za-z])F(?!e|m|r|a|i|l|m)/i, cat: "卤代物" },
-  { name: "氯代物", pattern: /Cl(?![[A-Za-z])/i, cat: "卤代物" },
-  { name: "溴代物", pattern: /Br(?![[A-Za-z])/i, cat: "卤代物" },
-  { name: "碘代物", pattern: /(?<![[A-Za-z])I(?!n|r|n)/i, cat: "卤代物" },
+  { name: "卤素", pattern: /F|Cl|Br|I/i, cat: "卤代物" },
 ];
 function identifyFunctionalGroups(smiles) {
   if (!smiles) return [];
@@ -2853,9 +2849,9 @@ async function loadNewsData() {
     if (resp.ok) {
       const json = await resp.json();
       if (json.code === 200 && json.news && json.news.length > 0) {
-        newsData = json.news.map(n => ({ ...n, type: n.category?.key || 'research' }));
+        newsData = json.news.map(n => ({ ...n, type: n.category.key }));
         const catLabels = {};
-        if (json.categories) Object.keys(json.categories).forEach(k => { catLabels[k] = json.categories[k]?.label || ''; });
+        Object.keys(json.categories).forEach(k => { catLabels[k] = json.categories[k].label; });
         categoryLabels = catLabels;
         return;
       }
@@ -3036,7 +3032,7 @@ async function loadRanking() {
       rankingTimer = setInterval(() => {
         rankingPos++;
         if (rankingPos > allItems.length - 3) rankingPos = 0;
-        innerEl.style.transform = `translateY(-${rankingPos * 96}px)`;
+        innerEl.style.transform = `translateY(-${rankingPos * 88}px)`;
       }, 3000);
     }
   } catch (e) {
@@ -3081,7 +3077,7 @@ async function runAISearch(query) {
         emptyEl.textContent = "当前分类暂无新闻。";
       }
     }
-  } catch (err) { emptyEl.textContent = "搜索失败,请稍后重试"; emptyEl.style.display = "block"; }
+  } catch (err) { console.log("搜索失败", err); }
   aiSearchBtn.disabled = false;
   aiSearchBtn.textContent = "搜索";
 }
@@ -3104,7 +3100,6 @@ document.querySelectorAll(".filter-btn").forEach(btn => {
     if (searchIndices !== null) {
       searchIndices = null;
       searchQueryText = "";
-      aiSearchInput.value = "";
       aiSearchClear.style.display = "none";
       emptyEl.textContent = "当前分类暂无新闻。";
     }
@@ -3500,9 +3495,8 @@ pteOverlay.addEventListener("click", (e) => { if (e.target === pteOverlay) pteOv
   // 无障碍:Escape 关闭所有 overlay 面板
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      [motdOverlay, pteOverlay, kbOverlay, graphOverlay, subOverlay, canvasOverlay, settingsOverlay, expReportOverlay].forEach(o => { if (o) o.hidden = true; });
+      [motdOverlay, pteOverlay, kbOverlay, graphOverlay].forEach(o => { if (o) o.hidden = true; });
       if (workspace.classList.contains('news-open')) closeNewsPanel();
-      hideSelPop();
     }
   });
   // 欢迎消息
