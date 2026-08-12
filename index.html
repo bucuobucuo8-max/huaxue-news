@@ -1186,6 +1186,11 @@ body.dragging { cursor: col-resize; user-select: none; }
 .kb-clear:hover { background: rgba(251, 113, 133, 0.22); }
 .sub-add-row { display: flex; gap: 8px; align-items: center; }
 .sub-add-row input::placeholder { color: var(--muted); }
+.canvas-card { position: absolute; width: 200px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(103,232,249,0.25); background: rgba(8,18,34,0.85); backdrop-filter: blur(8px); cursor: grab; user-select: none; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.canvas-card:active { cursor: grabbing; }
+.canvas-card-type { font-size: 10px; font-weight: 700; color: var(--cyan); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+.canvas-card-body { font-size: 12.5px; color: var(--text); line-height: 1.6; min-height: 20px; outline: none; }
+.canvas-card-body:focus { background: rgba(103,232,249,0.08); border-radius: 6px; padding: 2px 4px; }
 
 /* ================= 移动端:Agent 全屏 + 新闻抽屉 ================= */
 @media (max-width: 768px) {
@@ -1233,6 +1238,8 @@ body.dragging { cursor: col-resize; user-select: none; }
       <button class="news-toggle" id="pteToggle">🧪 周期表</button>
       <button class="news-toggle" id="graphToggle">🔬 文献图谱</button>
       <button class="news-toggle" id="subToggle">🔔 订阅</button>
+      <button class="news-toggle" id="canvasToggle">📐 研究画布</button>
+      <button class="news-toggle" id="settingsToggle">⚙️ 设置</button>
       <button class="news-toggle" id="newsToggle">📰 新闻文献</button>
     </div>
   </header>
@@ -1375,6 +1382,67 @@ body.dragging { cursor: col-resize; user-select: none; }
     </div>
     <div class="kb-list" id="subList" style="margin-top:12px;"></div>
     <div class="kb-list" id="notifList" style="margin-top:12px;"></div>
+  </div>
+</div>
+
+<!-- 研究画布 -->
+<div class="pte-overlay" id="canvasOverlay" hidden>
+  <div class="pte-card" style="width:min(96vw,1100px);max-height:92vh;">
+    <div class="pte-head">
+      <h3>📐 研究画布</h3>
+      <div style="display:flex;gap:8px;">
+        <button class="kb-export" id="canvasAddNote">📝 添加笔记</button>
+        <button class="kb-export" id="canvasAddKB">📚 从知识库添加</button>
+        <button class="kb-clear" id="canvasClear">清空</button>
+        <button class="motd-close" id="canvasClose" title="关闭">✕</button>
+      </div>
+    </div>
+    <div class="kb-hint">把论文、分子、笔记拖放到画布上,自由排列。画布状态自动保存在 IndexedDB。<b>拖拽卡片</b>移动位置,<b>双击</b>编辑笔记,<b>右键</b>删除卡片。</div>
+    <div id="canvasArea" style="position:relative;width:100%;height:500px;border-radius:12px;border:1px solid rgba(103,232,249,0.15);background:rgba(3,8,20,0.4);overflow:hidden;cursor:default;"></div>
+  </div>
+</div>
+
+<!-- 设置面板 -->
+<div class="pte-overlay" id="settingsOverlay" hidden>
+  <div class="pte-card kb-card">
+    <div class="pte-head">
+      <h3>⚙️ 设置与数据来源</h3>
+      <button class="motd-close" id="settingsClose" title="关闭">✕</button>
+    </div>
+    <div class="mol-section">
+      <div class="mol-section-title">数据来源</div>
+      <div style="font-size:12.5px;line-height:1.8;color:var(--muted);">
+        <b style="color:var(--cyan)">新闻文献:</b> GDELT · Crossref · OpenAlex · PubMed(每 15 分钟更新)<br>
+        <b style="color:var(--cyan)">分子结构:</b> PubChem (NIH)<br>
+        <b style="color:var(--cyan)">百科知识:</b> Wikipedia API<br>
+        <b style="color:var(--cyan)">AI 对话:</b> DeepSeek<br>
+        <b style="color:var(--cyan)">订阅数据:</b> Cloudflare D1<br>
+        <b style="color:var(--cyan)">本地存储:</b> IndexedDB(知识库/画布) · localStorage(收藏/设置)
+      </div>
+    </div>
+    <div class="mol-section">
+      <div class="mol-section-title">新闻更新时间</div>
+      <div id="settingsUpdateTime" style="font-size:12.5px;color:var(--muted);">加载中…</div>
+    </div>
+    <div class="mol-section">
+      <div class="mol-section-title">隐私设置</div>
+      <div style="font-size:12.5px;color:var(--muted);line-height:1.8;">
+        ✓ 对话历史仅存在浏览器内存中,刷新即清(不发送到服务器持久化)<br>
+        ✓ 收藏存储在 localStorage,仅本设备可见<br>
+        ✓ 知识库和画布存储在 IndexedDB,仅本设备可见<br>
+        ✓ 订阅关键词存储在 D1,仅通过你的 client_id 关联,不含个人信息<br>
+        ✓ 不使用 Cookie 追踪,不投放广告<br>
+        ✓ AI 对话通过加密(HTTPS)传输到 DeepSeek API
+      </div>
+    </div>
+    <div class="mol-section">
+      <div class="mol-section-title">数据管理</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px;">
+        <button class="kb-clear" id="clearCache">清除 API 缓存</button>
+        <button class="kb-clear" id="clearKB">清除知识库</button>
+        <button class="kb-clear" id="clearAll">清除所有本地数据</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1669,6 +1737,95 @@ async function loadSubs() {
     notifEl.innerHTML = "";
   } catch { listEl.innerHTML = '<div class="bubble-hint">订阅功能需要配置 D1 数据库(见 wrangler.toml)。</div>'; }
 }
+
+// ===== 研究画布 =====
+let canvasItems = [];
+const canvasArea = $("canvasArea");
+const canvasOverlay = $("canvasOverlay");
+async function loadCanvas() {
+  try {
+    const db = await kbDB(); if (!db) return;
+    return new Promise(res => {
+      const tx = db.transaction("canvas", "readonly");
+      const req = tx.objectStore("canvas").getAll();
+      req.onsuccess = () => { canvasItems = req.result || []; renderCanvas(); res(); };
+      req.onerror = () => res();
+    });
+  } catch {}
+}
+async function saveCanvas() {
+  try {
+    const db = await indexedDB.open("chem_kb", 2);
+    db.onupgradeneeded = (e) => { if (!e.target.result.objectStoreNames.contains("canvas")) e.target.result.createObjectStore("canvas", { keyPath: "id" }); };
+    db.onsuccess = (e) => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains("canvas")) return;
+      const tx = d.transaction("canvas", "readwrite");
+      tx.objectStore("canvas").clear();
+      canvasItems.forEach(it => tx.objectStore("canvas").put(it));
+    };
+  } catch {}
+}
+function renderCanvas() {
+  canvasArea.innerHTML = "";
+  canvasItems.forEach(item => {
+    const el = document.createElement("div");
+    el.className = "canvas-card";
+    el.style.left = item.x + "px"; el.style.top = item.y + "px";
+    el.dataset.id = item.id;
+    if (item.type === "note") {
+      el.innerHTML = `<div class="canvas-card-type">📝 笔记</div><div class="canvas-card-body" contenteditable="true">${escapeHtml(item.text || "")}</div>`;
+    } else if (item.type === "paper") {
+      el.innerHTML = `<div class="canvas-card-type">📄 文献</div><a href="${escapeHtml(item.url||'#')}" target="_blank" style="font-size:12px;color:#7dd3fc;text-decoration:none;">${escapeHtml(item.title||'')}</a>`;
+    } else if (item.type === "molecule") {
+      el.innerHTML = `<div class="canvas-card-type">🧬 分子</div><div style="font-size:13px;font-weight:600;">${escapeHtml(item.title||'')}</div><div style="font-size:11px;color:var(--muted);">${escapeHtml(item.formula||'')}</div>`;
+    }
+    el.addEventListener("pointerdown", (e) => {
+      if (e.target.isContentEditable) return;
+      e.preventDefault();
+      const sx = e.clientX, sy = e.clientY;
+      const ox = item.x, oy = item.y;
+      function move(ev) { item.x = ox + ev.clientX - sx; item.y = oy + ev.clientY - sy; el.style.left = item.x + "px"; el.style.top = item.y + "px"; }
+      function up() { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); saveCanvas(); }
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    });
+    el.addEventListener("contextmenu", (e) => { e.preventDefault(); canvasItems = canvasItems.filter(i => i.id !== item.id); renderCanvas(); saveCanvas(); });
+    if (item.type === "note") {
+      el.querySelector("[contenteditable]").addEventListener("blur", (e) => { item.text = e.target.textContent; saveCanvas(); });
+    }
+    canvasArea.appendChild(el);
+  });
+}
+$("canvasToggle").addEventListener("click", async () => { canvasOverlay.hidden = false; await loadCanvas(); });
+$("canvasClose").addEventListener("click", () => { canvasOverlay.hidden = true; });
+canvasOverlay.addEventListener("click", (e) => { if (e.target === canvasOverlay) canvasOverlay.hidden = true; });
+$("canvasAddNote").addEventListener("click", () => {
+  canvasItems.push({ id: Date.now(), type: "note", text: "双击编辑笔记…", x: 20 + Math.random()*200, y: 20 + Math.random()*200 });
+  renderCanvas(); saveCanvas();
+});
+$("canvasAddKB").addEventListener("click", () => {
+  if (knowledgeBase.length === 0) return;
+  knowledgeBase.forEach(k => {
+    if (!canvasItems.some(i => i.title === k.title)) {
+      canvasItems.push({ id: Date.now() + Math.random(), type: "paper", title: k.title, url: k.url, x: 20 + Math.random()*300, y: 20 + Math.random()*300 });
+    }
+  });
+  renderCanvas(); saveCanvas();
+});
+$("canvasClear").addEventListener("click", () => { canvasItems = []; renderCanvas(); saveCanvas(); });
+
+// ===== 设置面板 =====
+const settingsOverlay = $("settingsOverlay");
+$("settingsToggle").addEventListener("click", async () => {
+  settingsOverlay.hidden = false;
+  try { const r = await fetch("/api/external"); const j = await r.json(); $("settingsUpdateTime").textContent = `最后获取: ${j.fetchedAt || '未知'} · ${j.count || 0} 条新闻`; } catch { $("settingsUpdateTime").textContent = "无法获取更新时间"; }
+});
+$("settingsClose").addEventListener("click", () => { settingsOverlay.hidden = true; });
+settingsOverlay.addEventListener("click", (e) => { if (e.target === settingsOverlay) settingsOverlay.hidden = true; });
+$("clearCache").addEventListener("click", () => { if (caches) caches.delete("chem-agent-v1"); alert("API 缓存已清除"); });
+$("clearKB").addEventListener("click", async () => { knowledgeBase = []; await kbSave(); renderKBList(); alert("知识库已清除"); });
+$("clearAll").addEventListener("click", () => { if (confirm("确定清除所有本地数据?包含收藏、知识库、画布、设置。")) { localStorage.clear(); indexedDB.deleteDatabase("chem_kb"); location.reload(); } });
 
 // 文献关系图谱:用 Canvas 绘制知识库文献的主题关联网络
 const graphOverlay = $("graphOverlay");
@@ -2150,6 +2307,32 @@ chatInner.addEventListener("click", (e) => {
 // ===== 分子结构查询(PubChem PUG REST,免费无密钥;中文名经 DeepSeek 转换) =====
 const PUBCHEM = "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound";
 
+// 请求速率限制 + 缓存:防止 PubChem/Wikipedia 等公共 API 被频繁调用
+const _reqCache = new Map();
+const _reqTimes = [];
+function rateLimit(minInterval = 200) {
+  const now = Date.now();
+  _reqTimes.push(now);
+  while (_reqTimes.length > 10) _reqTimes.shift();
+  if (_reqTimes.length >= 10) {
+    const elapsed = now - _reqTimes[0];
+    if (elapsed < 2000) return false; // 2 秒内超过 10 次请求,拒绝
+  }
+  const last = _reqTimes[_reqTimes.length - 2];
+  if (last && now - last < minInterval) return false;
+  return true;
+}
+async function cachedFetch(url, ttl = 300000) {
+  // 缓存命中
+  const cached = _reqCache.get(url);
+  if (cached && Date.now() - cached.t < ttl) return cached.resp.clone();
+  // 速率限制
+  if (!rateLimit()) { await new Promise(r => setTimeout(r, 300)); }
+  const resp = await fetch(url);
+  if (resp.ok) _reqCache.set(url, { resp: resp.clone(), t: Date.now() });
+  return resp;
+}
+
 // 根据输入形态决定查询方式优先级:纯分子式 → fastformula;含 SMILES 特征字符 → smiles;其余按名称(三种方式依次尝试,保证命中)
 function molQueryKinds(q) {
   if (q.startsWith("InChI=")) return ["inchi", "name", "smiles"];
@@ -2234,7 +2417,7 @@ async function fetchMolecule(query) {
   }
   for (const kind of molQueryKinds(query)) {
     try {
-      const resp = await fetch(`${PUBCHEM}/${kind}/${encodeURIComponent(query)}/property/MolecularFormula,MolecularWeight,IUPACName,IsomericSMILES,CanonicalSMILES,InChI,InChIKey,XLogP,TPSA,HBondDonorCount,HBondAcceptorCount,RotatableBondCount,HeavyAtomCount,Complexity,Charge/JSON`);
+      const resp = await cachedFetch(`${PUBCHEM}/${kind}/${encodeURIComponent(query)}/property/MolecularFormula,MolecularWeight,IUPACName,IsomericSMILES,CanonicalSMILES,InChI,InChIKey,XLogP,TPSA,HBondDonorCount,HBondAcceptorCount,RotatableBondCount,HeavyAtomCount,Complexity,Charge/JSON`);
       if (!resp.ok) continue;
       const json = await resp.json();
       const prop = json.PropertyTable && json.PropertyTable.Properties && json.PropertyTable.Properties[0];
@@ -2318,7 +2501,7 @@ async function initMol3D(container) {
   const showFallback = () => { container.innerHTML = `<img src="${fallback}" alt="2D 结构式">`; };
   if (!window.$3Dmol || !cid) { showFallback(); return; }
   try {
-    const resp = await fetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF?record_type=3d`);
+    const resp = await cachedFetch(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/SDF?record_type=3d`);
     if (!resp.ok) throw new Error("no 3d");
     const sdf = await resp.text();
     if (!sdf || sdf.length < 50) throw new Error("empty");
