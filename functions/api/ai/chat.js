@@ -364,8 +364,10 @@ export async function onRequestPost(context) {
               }
             }
           }
-        } finally {
           controller.close();
+        } catch (e) {
+          // 流中断时发送错误信号,避免客户端收到不完整回复
+          controller.error(e);
         }
       },
       cancel() { upstream.cancel(); },

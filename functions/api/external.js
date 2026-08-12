@@ -119,7 +119,7 @@ function isValidArticle(title, url) {
 // =========================
 // 1. GDELT API - 全球化学新闻
 // =========================
-async function fetchGDELT() {
+export async function fetchGDELT() {
   const queries = [
     { q: '"chemistry" OR "chemical" OR "petrochemical"', source: 'GDELT' },
     { q: '"chemical plant" OR "chemical industry" OR "new material"', source: 'GDELT Industry' },
@@ -161,7 +161,7 @@ async function fetchGDELT() {
 // =========================
 // 2. Crossref API - 按化学期刊ISSN精确获取
 // =========================
-async function fetchCrossref() {
+export async function fetchCrossref() {
   // 知名化学期刊ISSN列表
   const chemistryISSNs = [
     '1755-4330', // Nature Chemistry
@@ -244,7 +244,7 @@ async function fetchOpenAlex() {
     for (const item of (data.results || [])) {
       const title = cleanHtml(item.title || '');
       const doi = (item.doi || '').trim().toLowerCase();
-      const url = doi ? doi : '';
+      const url = doi ? `https://doi.org/${doi}` : '';
       if (!isValidArticle(title, url)) continue;
       let abstract = '';
       if (item.abstract_inverted_index) {
@@ -313,7 +313,7 @@ async function fetchPubMed() {
         time: formatTime(pubDate, i + 30),
         type: classifyNews(title, journal),
         title,
-        summary: journal,
+        summary: [item.source, item.pubtype].filter(Boolean).join(' · ') || journal,
         source: 'PubMed',
         url,
         important: isImportant(title, journal),
@@ -360,10 +360,10 @@ export async function onRequestGet(context) {
 
     let allNews = [...gdeltNews, ...crossrefNews, ...openalexNews, ...pubmedNews];
 
-    // 去重(按标题前50字符)
+    // 去重(按标题+来源,避免同标题不同来源被误删)
     const seen = new Set();
     allNews = allNews.filter(n => {
-      const key = n.title.toLowerCase().substring(0, 50);
+      const key = (n.title + '|' + (n.source || '')).toLowerCase().substring(0, 80);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
