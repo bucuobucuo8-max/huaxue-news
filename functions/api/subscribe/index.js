@@ -40,6 +40,13 @@ export async function onRequestPost(context) {
   if (!client_id || !keyword) {
     return new Response(JSON.stringify({ code: 400, message: '缺少 client_id 或 keyword' }), { headers: CORS_HEADERS });
   }
+  // 输入验证:限制长度和类型
+  if (typeof keyword !== 'string' || keyword.length > 200) {
+    return new Response(JSON.stringify({ code: 400, message: '关键词过长' }), { headers: CORS_HEADERS });
+  }
+  if (!['keyword', 'author', 'journal'].includes(type)) {
+    return new Response(JSON.stringify({ code: 400, message: '无效的订阅类型' }), { headers: CORS_HEADERS });
+  }
 
   if (!env.DB) {
     return new Response(JSON.stringify({ code: 200, data: { id: 0, keyword, type }, message: 'D1 未绑定,订阅仅当前会话有效' }), { headers: CORS_HEADERS });
