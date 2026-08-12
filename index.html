@@ -271,6 +271,21 @@ body::before {
 .admet-rule { font-size: 11.5px; padding: 3px 10px; border-radius: 8px; }
 .admet-rule.pass { background: rgba(52, 211, 153, 0.15); border: 1px solid rgba(52, 211, 153, 0.3); color: #34d399; }
 .admet-rule.fail { background: rgba(251, 113, 133, 0.15); border: 1px solid rgba(251, 113, 133, 0.3); color: #fb7185; }
+/* 证据级引用 */
+.cite-ref { color: var(--cyan); cursor: pointer; font-size: 10px; font-weight: 700; padding: 0 1px; }
+.cite-ref:hover { text-decoration: underline; }
+.cite-refs { margin-top: 12px; padding: 10px 14px; border-radius: 10px; border: 1px solid rgba(103,232,249,0.18); background: rgba(8,18,34,0.4); font-size: 12px; }
+.cite-refs b { color: var(--cyan); font-size: 12px; }
+.cite-refs ol { margin: 6px 0 0 18px; padding: 0; color: var(--muted); line-height: 1.8; }
+.cite-refs ol li { word-break: break-all; }
+.cite-refs ol li a { color: #7dd3fc; }
+.evidence-tag { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: 5px; margin: 0 2px; }
+.evidence-fact { background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.3); color: #34d399; }
+.evidence-infer { background: rgba(251,191,36,0.15); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24; }
+.evidence-dispute { background: rgba(251,113,133,0.15); border: 1px solid rgba(251,113,133,0.3); color: #fb7185; }
+/* 学术导出按钮 */
+.kb-export { appearance: none; border: 1px solid rgba(103,232,249,0.3); background: rgba(103,232,249,0.1); color: var(--cyan); border-radius: 9px; padding: 7px 12px; font-size: 12px; font-weight: 600; cursor: pointer; margin-right: 6px; }
+.kb-export:hover { background: rgba(103,232,249,0.2); }
 /* 化学反应演示卡片:反应物与生成物同屏展示,动画箭头指向生成方向 */
 .rxn-stage {
   position: relative;
@@ -1309,6 +1324,9 @@ body.dragging { cursor: col-resize; user-select: none; }
     <div class="kb-hint">你读过的网页会自动收集到这里。<b>勾选</b>后,后续每轮对话都会携带这些网页的全文,Agent 可跨多篇综合对比回答(最多同时携带 3 篇)。</div>
     <div class="kb-list" id="kbList"></div>
     <div class="kb-foot">
+      <button class="kb-export" id="kbExportBib">📋 BibTeX</button>
+      <button class="kb-export" id="kbExportRis">📋 RIS</button>
+      <button class="kb-export" id="kbExportMd">📋 Markdown</button>
       <button class="kb-clear" id="kbClear">🗑 清空知识库</button>
     </div>
   </div>
@@ -1495,6 +1513,29 @@ $("kbClear").addEventListener("click", () => {
   saveKB();
   renderKBList();
 });
+function exportKB(format) {
+  if (knowledgeBase.length === 0) return;
+  let content = '', mime = 'text/plain', ext = 'txt';
+  if (format === 'bibtex') {
+    content = knowledgeBase.map((k, i) => `@article{ref${i+1},\n  title = {${k.title}},\n  url = {${k.url}},\n  note = {${k.source || ''}}\n}`).join('\n\n');
+    ext = 'bib';
+  } else if (format === 'ris') {
+    content = knowledgeBase.map((k, i) => `TY - JOUR\nTI - ${k.title}\nUR - ${k.url}\nPB - ${k.source || ''}\nER -\n`).join('\n');
+    ext = 'ris';
+  } else {
+    content = '# 知识库文献导出\n\n' + knowledgeBase.map((k, i) => `${i+1}. **${k.title}**\n   - 来源: ${k.source || '未知'}\n   - 链接: ${k.url}\n`).join('\n');
+    ext = 'md';
+  }
+  const blob = new Blob([content], { type: mime });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `knowledge_base.${ext}`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+$("kbExportBib").addEventListener("click", () => exportKB('bibtex'));
+$("kbExportRis").addEventListener("click", () => exportKB('ris'));
+$("kbExportMd").addEventListener("click", () => exportKB('md'));
 const kbOverlay = $("kbOverlay");
 $("kbToggle").addEventListener("click", () => { renderKBList(); kbOverlay.hidden = false; });
 $("kbClose").addEventListener("click", () => { kbOverlay.hidden = true; });
@@ -1554,6 +1595,25 @@ function fmtReply(text) {
   return escapeHtml(text)
     .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
     .replace(/\n/g, "<br>");
+}
+
+// 解析引用标记 [1] [2] -> 上标链接;提取 [REFS] 块 -> 参考文献列表;提取 [DEEPREAD]/[MATRIX] -> 特殊卡片
+function renderCitations(html) {
+  // 提取参考文献块
+  let refsHtml = '';
+  const refsMatch = html.match(/\[REFS\]([\s\S]+?)\[\/REFS\]/i);
+  if (refsMatch) {
+    const refs = refsMatch[1].trim().split('\n').filter(l => l.trim());
+    refsHtml = '<div class="cite-refs"><b>参考文献</b><ol>' + refs.map(r => `<li>${r.replace(/^\[\d+\]\s*/, '')}</li>`).join('') + '</ol></div>';
+    html = html.replace(/\[REFS\][\s\S]+?\[\/REFS\]/i, '');
+  }
+  // [1] [2] -> 上标引用标记
+  html = html.replace(/\[(\d+)\]/g, '<sup class="cite-ref">[$1]</sup>');
+  // 证据类型标注着色
+  html = html.replace(/\(文献事实\)/g, '<span class="evidence-tag evidence-fact">文献事实</span>');
+  html = html.replace(/\(模型推断\)/g, '<span class="evidence-tag evidence-infer">模型推断</span>');
+  html = html.replace(/\(存在争议\)/g, '<span class="evidence-tag evidence-dispute">存在争议</span>');
+  return html + refsHtml;
 }
 
 // 推荐追问按钮组
@@ -1776,7 +1836,7 @@ async function handleUserText(text) {
           .replace(/\[RXN\][\s\S]+?\[\/RXN\]/gi, "")
           .replace(/\[SUGGEST\][\s\S]+?\[\/SUGGEST\]/gi, "")
           .trim();
-        let replyHtml = fmtReply(replyText);
+        let replyHtml = renderCitations(fmtReply(replyText));
         if (molMarker) replyHtml += moleculeCardHtml(await fetchMolecule(molMarker[1].trim()));
         if (rxnMarker) replyHtml += reactionCardHtml(rxnMarker[1].trim());
         if (sugMarker) replyHtml += suggestChipsHtml(sugMarker[1].split("|"));
