@@ -369,6 +369,14 @@ export async function onRequestGet(context) {
       return true;
     });
 
+    // 撤稿检测:检查 DOI 是否在 Retraction Watch 中有记录(简化版:检查标题中是否含 retraction/撤稿 关键词)
+    allNews.forEach(n => {
+      if (/retract|withdraw|撤稿|撤回/i.test(n.title) || /retract|withdraw/i.test(n.summary || '')) {
+        n.retracted = true;
+        n.title = '⚠️ [可能撤稿] ' + n.title;
+      }
+    });
+
     allNews.sort((a, b) => b.time.localeCompare(a.time));
     allNews = allNews.slice(0, 20);
 

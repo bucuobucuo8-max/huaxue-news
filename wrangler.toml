@@ -2,7 +2,20 @@ name = "huaxue-news"
 compatibility_date = "2024-01-01"
 pages_build_output_dir = "."
 
+# D1 数据库绑定(订阅 + 用户数据)
 [[d1_databases]]
 binding = "DB"
-database_name = "huaxue-news-db"
-database_id = "faf2c5bb-990d-41fd-b611-e0640b67c0eb"
+database_name = "chem-agent-db"
+database_id = "YOUR_D1_DATABASE_ID"
+
+# R2 存储绑定(论文附件缓存)
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "chem-agent-cache"
+
+# Cron Trigger(定时检查订阅更新)
+[triggers]
+crons = ["0 */6 * * *"]
+
+[vars]
+DEEPSEEK_MODEL = "deepseek-chat"

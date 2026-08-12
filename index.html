@@ -262,6 +262,9 @@ body::before {
 .mol-3d-loading { font-size: 11px; color: #5b7a8c; text-align: center; padding-top: 86px; }
 .mol-conf-btn { position: absolute; top: 6px; right: 6px; z-index: 5; appearance: none; border: 1px solid rgba(103,232,249,0.4); background: rgba(8,18,34,0.7); color: var(--cyan); border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: 700; cursor: pointer; }
 .mol-conf-btn:hover { background: rgba(103,232,249,0.2); }
+.mol-search-btn { appearance: none; border: 1px solid rgba(167,139,250,0.3); background: rgba(167,139,250,0.1); color: #c4b5fd; border-radius: 8px; padding: 5px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; margin-right: 6px; margin-bottom: 6px; }
+.mol-search-btn:hover { background: rgba(167,139,250,0.2); }
+.mol-search-results { margin-top: 8px; min-height: 20px; }
 .mol-section { margin-top: 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(103, 232, 249, 0.14); background: rgba(8, 18, 34, 0.35); }
 .mol-section-title { font-size: 12px; font-weight: 700; color: var(--cyan); margin-bottom: 8px; letter-spacing: 0.05em; }
 .mol-fg-list { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1181,6 +1184,8 @@ body.dragging { cursor: col-resize; user-select: none; }
   cursor: pointer;
 }
 .kb-clear:hover { background: rgba(251, 113, 133, 0.22); }
+.sub-add-row { display: flex; gap: 8px; align-items: center; }
+.sub-add-row input::placeholder { color: var(--muted); }
 
 /* ================= 移动端:Agent 全屏 + 新闻抽屉 ================= */
 @media (max-width: 768px) {
@@ -1227,6 +1232,7 @@ body.dragging { cursor: col-resize; user-select: none; }
       <button class="news-toggle" id="kbToggle">📚 知识库 <span class="kb-badge" id="kbCount">0</span></button>
       <button class="news-toggle" id="pteToggle">🧪 周期表</button>
       <button class="news-toggle" id="graphToggle">🔬 文献图谱</button>
+      <button class="news-toggle" id="subToggle">🔔 订阅</button>
       <button class="news-toggle" id="newsToggle">📰 新闻文献</button>
     </div>
   </header>
@@ -1346,6 +1352,29 @@ body.dragging { cursor: col-resize; user-select: none; }
     <div class="kb-hint">基于当前知识库中的文献,展示它们之间的主题关联。节点大小反映关联度,颜色按来源分类。</div>
     <div id="graphCanvas" style="height:400px;position:relative;border-radius:12px;border:1px solid rgba(103,232,249,0.15);background:rgba(3,8,20,0.4);overflow:hidden;"></div>
     <div class="pte-hint" id="graphHint" style="margin-top:8px">添加更多文献到知识库可丰富图谱。拖拽节点可重排。</div>
+  </div>
+</div>
+
+<!-- 订阅面板 -->
+<div class="pte-overlay" id="subOverlay" hidden>
+  <div class="pte-card kb-card">
+    <div class="pte-head">
+      <h3>🔔 订阅监控</h3>
+      <button class="motd-close" id="subClose" title="关闭">✕</button>
+    </div>
+    <div class="kb-hint">添加关键词、DOI、作者或分子,系统每 6 小时检查新论文和撤稿通知。</div>
+    <div class="sub-add-row">
+      <input type="text" id="subInput" placeholder="输入关键词(如 EGFR、PROTAC、有机催化)" style="flex:1;appearance:none;border:1px solid rgba(103,232,249,0.25);background:rgba(8,18,34,0.5);color:var(--text);border-radius:9px;padding:8px 12px;font-size:13px;">
+      <select id="subType" style="appearance:none;border:1px solid rgba(103,232,249,0.25);background:rgba(8,18,34,0.5);color:var(--text);border-radius:9px;padding:8px;font-size:12px;">
+        <option value="keyword">关键词</option>
+        <option value="doi">DOI</option>
+        <option value="author">作者</option>
+        <option value="molecule">分子</option>
+      </select>
+      <button class="pte-ask" id="subAddBtn" style="margin:0;">添加</button>
+    </div>
+    <div class="kb-list" id="subList" style="margin-top:12px;"></div>
+    <div class="kb-list" id="notifList" style="margin-top:12px;"></div>
   </div>
 </div>
 
@@ -1599,6 +1628,48 @@ $("kbToggle").addEventListener("click", () => { renderKBList(); kbOverlay.hidden
 $("kbClose").addEventListener("click", () => { kbOverlay.hidden = true; });
 kbOverlay.addEventListener("click", (e) => { if (e.target === kbOverlay) kbOverlay.hidden = true; });
 
+// ===== 订阅系统 =====
+const SUB_CLIENT_KEY = "sub_client_id";
+let subClientId = localStorage.getItem(SUB_CLIENT_KEY);
+if (!subClientId) { subClientId = 'c' + Date.now() + Math.random().toString(36).slice(2,8); localStorage.setItem(SUB_CLIENT_KEY, subClientId); }
+const subOverlay = $("subOverlay");
+$("subToggle").addEventListener("click", async () => { subOverlay.hidden = false; await loadSubs(); });
+$("subClose").addEventListener("click", () => { subOverlay.hidden = true; });
+subOverlay.addEventListener("click", (e) => { if (e.target === subOverlay) subOverlay.hidden = true; });
+$("subAddBtn").addEventListener("click", async () => {
+  const kw = $("subInput").value.trim();
+  if (!kw) return;
+  const type = $("subType").value;
+  try {
+    await fetch("/api/subscribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_id: subClientId, keyword: kw, type }) });
+  } catch {}
+  $("subInput").value = "";
+  await loadSubs();
+});
+$("subInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("subAddBtn").click(); });
+$("subList").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".sub-del");
+  if (!btn) return;
+  try { await fetch(`/api/subscribe?id=${btn.dataset.id}&client_id=${subClientId}`, { method: "DELETE" }); } catch {}
+  await loadSubs();
+});
+async function loadSubs() {
+  const listEl = $("subList"), notifEl = $("notifList");
+  listEl.innerHTML = '<div class="bubble-hint">加载中…</div>';
+  try {
+    const resp = await fetch(`/api/subscribe?client_id=${subClientId}`);
+    const json = await resp.json();
+    const subs = json.data || [];
+    listEl.innerHTML = subs.length > 0 ? subs.map(s => `
+      <div class="kb-item">
+        <span style="font-size:11px;color:var(--violet);background:rgba(167,139,250,0.15);padding:2px 8px;border-radius:6px;">${escapeHtml(s.type)}</span>
+        <div class="kb-item-body"><span class="kb-item-title" style="display:inline">${escapeHtml(s.keyword)}</span>${s.unread > 0 ? `<span style="color:var(--coral);font-size:11px;margin-left:6px;">${s.unread} 条新通知</span>` : ''}</div>
+        <button class="kb-remove sub-del" data-id="${s.id}" title="取消订阅">✕</button>
+      </div>`).join("") : '<div class="bubble-hint">还没有订阅。添加关键词后,系统会定期检查新论文和撤稿。</div>';
+    notifEl.innerHTML = "";
+  } catch { listEl.innerHTML = '<div class="bubble-hint">订阅功能需要配置 D1 数据库(见 wrangler.toml)。</div>'; }
+}
+
 // 文献关系图谱:用 Canvas 绘制知识库文献的主题关联网络
 const graphOverlay = $("graphOverlay");
 const graphCanvas = $("graphCanvas");
@@ -1749,6 +1820,55 @@ function renderCitations(html) {
   html = html.replace(/\(存在争议\)/g, '<span class="evidence-tag evidence-dispute">存在争议</span>');
   return html + refsHtml;
 }
+
+// 子结构/相似性搜索:PubChem 异步 API(提交 -> 轮询 ListKey -> 获取结果)
+async function pubchemSearch(smiles, type, resultsEl) {
+  if (!smiles) return;
+  resultsEl.innerHTML = '<span class="bubble-hint">搜索中...PubChem 异步查询可能需要 10-30 秒</span>';
+  resultsEl.dataset.pending = "true";
+  try {
+    const endpoint = type === 'substructure' ? 'substructure' : 'similarity';
+    const url = type === 'substructure'
+      ? `${PUBCHEM}/${endpoint}/smiles/${encodeURIComponent(smiles)}/JSON?MaxRecords=5`
+      : `${PUBCHEM}/${endpoint}/smiles/${encodeURIComponent(smiles)}/JSON?MaxRecords=5&Threshold=90`;
+    let resp = await fetch(url);
+    if (!resp.ok) { resultsEl.innerHTML = '<span class="bubble-hint">搜索失败</span>'; return; }
+    let data = await resp.json();
+    // 若返回 Waiting/ListKey,需要轮询
+    if (data.Waiting && data.ListKey) {
+      for (let i = 0; i < 12; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const pollResp = await fetch(`${PUBCHEM}/compound/list/${data.ListKey}/JSON`);
+        if (!pollResp.ok) continue;
+        const pollData = await pollResp.json();
+        if (!pollData.Waiting) { data = pollData; break; }
+      }
+    }
+    const cids = data.PropertyTable?.Properties?.map(p => p.CID) || data.IdentifierList?.CID || [];
+    if (cids.length === 0) { resultsEl.innerHTML = '<span class="bubble-hint">未找到匹配化合物</span>'; return; }
+    // 获取前 5 个的名称
+    const cidStr = cids.slice(0, 5).join(',');
+    const propResp = await fetch(`${PUBCHEM}/cid/${cidStr}/property/MolecularFormula,IUPACName/JSON`);
+    let items = [];
+    if (propResp.ok) {
+      const propData = await propResp.json();
+      items = propData.PropertyTable?.Properties || [];
+    }
+    resultsEl.innerHTML = items.length > 0
+      ? `<div class="mol-fg-list">${items.map(p => `<a class="mol-fg-tag" href="https://pubchem.ncbi.nlm.nih.gov/compound/${p.CID}" target="_blank" title="${escapeHtml(p.IUPACName || '')}">${escapeHtml(p.MolecularFormula || 'CID:'+p.CID)}</a>`).join('')}</div>`
+      : `<span class="bubble-hint">找到 ${cids.length} 个匹配化合物</span>`;
+  } catch (e) {
+    resultsEl.innerHTML = '<span class="bubble-hint">搜索超时或失败,请稍后重试</span>';
+  }
+  resultsEl.dataset.pending = "false";
+}
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".mol-search-btn");
+  if (!btn) return;
+  const resultsEl = btn.parentElement.querySelector(".mol-search-results");
+  if (!resultsEl || resultsEl.dataset.pending === "true") return;
+  pubchemSearch(btn.dataset.smiles, btn.dataset.type, resultsEl);
+});
 
 // 推荐追问按钮组
 function suggestChipsHtml(questions) {
@@ -2182,6 +2302,12 @@ function moleculeCardHtml(r) {
         <span class="admet-rule ${admet.veberV.length === 0 ? "pass" : "fail"}">Veber: ${admet.veberV.length === 0 ? "✓ 通过" : admet.veberV.join(", ")}</span>
       </div>
     </div>
+    <div class="mol-section">
+      <div class="mol-section-title">结构搜索</div>
+      <button class="mol-search-btn" data-smiles="${escapeHtml(p.IsomericSMILES || p.CanonicalSMILES || "")}" data-type="substructure">🔍 子结构搜索</button>
+      <button class="mol-search-btn" data-smiles="${escapeHtml(p.IsomericSMILES || p.CanonicalSMILES || "")}" data-type="similarity">🔗 相似性搜索</button>
+      <div class="mol-search-results" data-pending="false"></div>
+    </div>
     <span class="bubble-hint">数据源:PubChem CID ${p.CID} · 3D 模型可拖拽旋转 · 想进一步了解它的性质?直接继续问我。</span>`;
 }
 
@@ -2270,7 +2396,8 @@ async function initReaction(stage) {
       el.innerHTML = "";
       const viewer = window.$3Dmol.createViewer(el, { backgroundColor: "#f4f8fb" });
       viewer.addModel(sdf, "sdf");
-      viewer.setStyle({}, { stick: { radius: 0.16 }, sphere: { scale: 0.3 } });
+      viewer.setStyle({}, { stick: { radius: 0.16, colorscheme: "greenCarbon" }, sphere: { scale: 0.3 } });
+      viewer.addLabel(el.dataset.smiles.split(".")[0].substring(0, 12), { fontSize: 9, position: { x: 0, y: 0, z: 0 }, backgroundColor: "rgba(0,0,0,0.7)", fontColor: "white" });
       viewer.zoomTo();
       viewer.spin("y", 0.5);
       viewer.render();
