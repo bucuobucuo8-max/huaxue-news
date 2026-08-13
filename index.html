@@ -1926,7 +1926,7 @@ $("expReportConfirm").addEventListener("click", () => {
 <p><b>器材:</b></p>
 <ul>${(d.equipment||[]).map(e => `<li>${e}</li>`).join('') || '<li>未提取到</li>'}</ul>
 <h2>三、反应机理与方程式</h2>
-<p>${(d.mechanism || '未提取到').replace(/\n/g, '<br>')}</p>
+<p>${mechanismToText(d.mechanism || '未提取到').replace(/\n/g, '<br>')}</p>
 <h2>四、实验注意事项</h2>
 <ul class="note">${(d.notes||[]).map(n => `<li>${n}</li>`).join('') || '<li>未提取到</li>'}</ul>
 <br><hr><p style="text-align:center;font-size:10pt;color:#999;">本报告由 AI 自动生成,仅供参考。实验前请核实原始文献并遵守实验室安全规范。</p>
@@ -2265,6 +2265,20 @@ async function renderMechanismHTML(text) {
   }
   if (last < src.length) out.push(escapeHtml(src.slice(last)));
   return out.join('');
+}
+
+// 将反应机理 LaTeX 转为 Word 可读的纯文本(去除数学标记,保留下标/上标/箭头)
+function mechanismToText(text) {
+  if (!text) return '未提取到';
+  let t = text.replace(/\\\\/g, '\\');
+  t = t.replace(/\\\[|\\\]|\\\(|\\\)/g, '');
+  t = t.replace(/\\ce\{([^}]*)\}/g, '$1');
+  t = t.replace(/\^\{([^}]*)\}/g, '<sup>$1</sup>');
+  t = t.replace(/_\{([^}]*)\}/g, '<sub>$1</sub>');
+  t = t.replace(/->/g, '→');
+  t = t.replace(/\^([0-9+\-])/g, '<sup>$1</sup>');
+  t = t.replace(/_([0-9])/g, '<sub>$1</sub>');
+  return t;
 }
 
 function addMessage(role, html) {
