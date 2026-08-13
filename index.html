@@ -1869,6 +1869,7 @@ $("expReportGen").addEventListener("click", async () => {
     if (json.code === 200 && json.data) {
       expReportData = json.data;
       const d = json.data;
+      const mechanismHTML = await renderMechanismHTML(d.mechanism || '未提取到');
       $("expReportContent").innerHTML = `
         <div class="mol-section">
           <div class="mol-section-title">1. 新闻标题与来源</div>
@@ -1885,14 +1886,12 @@ $("expReportGen").addEventListener("click", async () => {
         </div>
         <div class="mol-section">
           <div class="mol-section-title">3. 反应机理 / 方程式</div>
-          <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${processMechanism(d.mechanism || '未提取到')}</div>
+          <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${mechanismHTML}</div>
         </div>
         <div class="mol-section">
           <div class="mol-section-title">4. 实验注意事项</div>
           <div style="font-size:12.5px;color:var(--text);line-height:1.8;">${(d.notes||[]).map(n => '⚠️ ' + escapeHtml(n)).join('<br>') || '未提取到'}</div>
         </div>`;
-      // 触发 MathJax 渲染化学方程式(typesetClear 确保重新处理)
-      typesetMath($("expReportContent"));
       $("expReportConfirm").style.display = "block";
       $("expReportGen").textContent = "🔄 换一条新闻";
     } else {
@@ -2238,6 +2237,34 @@ function processMechanism(text) {
   // 4. 还原被保护的数学区域
   t = t.replace(/\x00MATH(\d+)\x00/g, (_, i) => mathBlocks[parseInt(i)]);
   return t;
+}
+
+// 将反应机理文本渲染为 HTML:直接用 tex2chtmlPromise 转换数学块,避免 DOM 扫描失效
+async function renderMechanismHTML(text) {
+  if (!text) return '未提取到';
+  const src = processMechanism(text);
+  // MathJax 未就绪时回退为转义后的纯文本
+  if (!window.MathJax || !window.MathJax.tex2chtmlPromise) return escapeHtml(src);
+  // 等待 MathJax 完全初始化(含 mhchem 扩展加载),避免 \ce 未定义
+  try { if (window.MathJax.startup && window.MathJax.startup.promise) await window.MathJax.startup.promise; } catch {}
+  const out = [];
+  let last = 0;
+  const re = /\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    if (m.index > last) out.push(escapeHtml(src.slice(last, m.index)));
+    const latex = m[1] || m[2];
+    try {
+      const node = await window.MathJax.tex2chtmlPromise(latex, { display: !!m[1] });
+      out.push(node.outerHTML || node.innerHTML || escapeHtml(m[0]));
+    } catch (e) {
+      console.error('MathJax 渲染失败:', latex, e);
+      out.push(escapeHtml(m[0]));
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < src.length) out.push(escapeHtml(src.slice(last)));
+  return out.join('');
 }
 
 function addMessage(role, html) {
