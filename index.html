@@ -1774,7 +1774,25 @@ async function loadSubs() {
         <div class="kb-item-body"><span class="kb-item-title" style="display:inline">${escapeHtml(s.keyword)}</span>${s.unread > 0 ? `<span style="color:var(--coral);font-size:11px;margin-left:6px;">${s.unread} 条新通知</span>` : ''}</div>
         <button class="kb-remove sub-del" data-id="${s.id}" title="取消订阅">✕</button>
       </div>`).join("") : '<div class="bubble-hint">还没有订阅。添加关键词后,系统会定期检查新论文和撤稿。</div>';
-    notifEl.innerHTML = "";
+
+    // 提醒明细:集成在订阅面板中展示
+    const notifs = json.notifications || [];
+    if (notifs.length > 0) {
+      const fmtT = (s) => { try { return new Date(s.replace(" ", "T") + "Z").toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return s || ""; } };
+      notifEl.innerHTML = '<div class="kb-hint" style="margin:6px 0 2px;">📬 最近提醒(未读标红)</div>' + notifs.map(n => `
+        <div class="kb-item">
+          <span style="font-size:11px;color:var(--violet);background:rgba(167,139,250,0.15);padding:2px 8px;border-radius:6px;flex:0 0 auto;">${escapeHtml(n.keyword || "订阅")}</span>
+          <div class="kb-item-body">
+            <a class="kb-item-title" href="${escapeHtml(n.url || "#")}" target="_blank" rel="noopener noreferrer">${escapeHtml(n.title)}${n.read === 0 ? '<span style="color:var(--coral);font-size:11px;margin-left:6px;">新</span>' : ""}</a>
+            ${n.snippet ? `<div class="kb-item-meta">${escapeHtml(n.snippet)}</div>` : ""}
+            <div class="kb-item-meta">${fmtT(n.created_at)}</div>
+          </div>
+        </div>`).join("");
+      // 展示后标记为已读
+      try { await fetch("/api/subscribe/read", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_id: subClientId }) }); } catch {}
+    } else {
+      notifEl.innerHTML = '<div class="bubble-hint">暂无提醒。添加订阅后,系统每 6 小时自动检查新论文/撤稿并在这里显示。</div>';
+    }
   } catch { listEl.innerHTML = '<div class="bubble-hint">订阅功能需要配置 D1 数据库(见 wrangler.toml)。</div>'; }
 }
 

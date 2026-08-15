@@ -18,7 +18,7 @@ export async function onRequestGet(context) {
   const clientId = url.searchParams.get('client_id') || '';
 
   if (!env.DB) {
-    return new Response(JSON.stringify({ code: 200, data: [], message: 'D1 未绑定,订阅功能降级' }), { headers: CORS_HEADERS });
+    return new Response(JSON.stringify({ code: 200, data: [], notifications: [], message: 'D1 未绑定,订阅功能降级' }), { headers: CORS_HEADERS });
   }
 
   try {
@@ -26,9 +26,14 @@ export async function onRequestGet(context) {
       'SELECT s.*, (SELECT COUNT(*) FROM notifications n WHERE n.subscription_id = s.id AND n.read = 0) as unread FROM subscriptions s WHERE s.client_id = ? AND s.active = 1 ORDER BY s.created_at DESC'
     ).bind(clientId).all();
 
-    return new Response(JSON.stringify({ code: 200, data: results || [] }), { headers: CORS_HEADERS });
+    // 最近提醒明细(按订阅关键词标注),供订阅面板直接展示
+    const { results: notifs } = await env.DB.prepare(
+      'SELECT n.*, s.keyword FROM notifications n LEFT JOIN subscriptions s ON s.id = n.subscription_id WHERE n.client_id = ? ORDER BY n.created_at DESC, n.id DESC LIMIT 20'
+    ).bind(clientId).all();
+
+    return new Response(JSON.stringify({ code: 200, data: results || [], notifications: notifs || [] }), { headers: CORS_HEADERS });
   } catch (e) {
-    return new Response(JSON.stringify({ code: 500, message: e.message, data: [] }), { headers: CORS_HEADERS });
+    return new Response(JSON.stringify({ code: 500, message: e.message, data: [], notifications: [] }), { headers: CORS_HEADERS });
   }
 }
 
