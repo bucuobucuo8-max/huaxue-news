@@ -83,8 +83,6 @@ body::before {
   padding: 12px 22px;
   border-bottom: 1px solid rgba(125, 211, 252, 0.14);
   background: rgba(3, 8, 20, 0.6);
-  backdrop-filter: blur(14px) saturate(120%);
-  -webkit-backdrop-filter: blur(14px) saturate(120%);
   z-index: 30;
 }
 .brand {
@@ -179,8 +177,6 @@ body::before {
   border-radius: 16px;
   user-select: text;
   word-break: break-word;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
 }
 .msg.user .bubble {
   background: rgba(167, 139, 250, 0.16);
@@ -452,8 +448,6 @@ body::before {
   border-radius: 16px;
   border: 1px solid rgba(167, 139, 250, 0.3);
   background: rgba(8, 18, 34, 0.45);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   box-shadow: 0 0 24px rgba(167, 139, 250, 0.08);
 }
 #composerInput {
@@ -522,8 +516,6 @@ body.dragging { cursor: col-resize; user-select: none; }
   flex-direction: column;
   border-left: 1px solid rgba(125, 211, 252, 0.14);
   background: rgba(3, 8, 20, 0.55);
-  backdrop-filter: blur(16px) saturate(120%);
-  -webkit-backdrop-filter: blur(16px) saturate(120%);
 }
 .workspace.news-open .news-panel { width: var(--news-w); opacity: 1; }
 .news-head {
@@ -796,8 +788,6 @@ body.dragging { cursor: col-resize; user-select: none; }
   background: linear-gradient(145deg, rgba(8, 18, 34, 0.62), rgba(5, 11, 24, 0.48));
   border: 1px solid rgba(103, 232, 249, 0.16);
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.16), inset 0 1px rgba(255, 255, 255, 0.025);
-  backdrop-filter: blur(14px) saturate(115%);
-  -webkit-backdrop-filter: blur(14px) saturate(115%);
   transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
 }
 .story:hover { transform: translateY(-2px); border-color: rgba(103, 232, 249, 0.3); box-shadow: 0 12px 36px rgba(2, 8, 23, 0.3), 0 0 24px rgba(103, 232, 249, 0.08); }
@@ -1200,7 +1190,7 @@ body.dragging { cursor: col-resize; user-select: none; }
 .kb-clear:hover { background: rgba(251, 113, 133, 0.22); }
 .sub-add-row { display: flex; gap: 8px; align-items: center; }
 .sub-add-row input::placeholder { color: var(--muted); }
-.canvas-card { position: absolute; width: 200px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(103,232,249,0.25); background: rgba(8,18,34,0.85); backdrop-filter: blur(8px); cursor: grab; user-select: none; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.canvas-card { position: absolute; width: 200px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(103,232,249,0.25); background: rgba(8,18,34,0.85); cursor: grab; user-select: none; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
 .canvas-card:active { cursor: grabbing; }
 .canvas-card-type { font-size: 10px; font-weight: 700; color: var(--cyan); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
 .canvas-card-body { font-size: 12.5px; color: var(--text); line-height: 1.6; min-height: 20px; outline: none; }
