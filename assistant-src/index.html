@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>站内 AI 助手 · 化学新闻资料站</title>
+    <script>
+      // 只保留主站内嵌面板:直接单独访问 /assistant 独立页时,自动跳回主站
+      if (window.self === window.top) location.replace('/');
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/3dmol@2.4.2/build/3Dmol-min.js"></script>
   </head>
   <body>
