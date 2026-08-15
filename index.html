@@ -11,7 +11,7 @@ window.MathJax = {
   tex: {
     packages: { '[+]': ['mhchem'] },
     inlineMath: [['\\(', '\\)']],
-    displayMath: [['\\[', '\\]']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
   },
   options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
 };
@@ -146,6 +146,14 @@ body::before {
   padding: 20px clamp(16px, 4vw, 56px) 16px;
   gap: 14px;
 }
+.assistant-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 14px;
+  background: #05070f;
+}
 .chat-scroll {
   flex: 1;
   min-height: 0;
@@ -194,6 +202,18 @@ body::before {
 .bubble mjx-container[display="true"] { margin: 10px 0; }
 .bubble ul { padding-left: 18px; margin: 6px 0; }
 .bubble li { margin: 3px 0; }
+/* 工具调用芯片(Agent function calling 过程展示) */
+.tool-chip {
+  display: inline-block;
+  margin: 2px 6px 6px 0;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  color: var(--cyan);
+  border: 1px solid rgba(103, 232, 249, 0.32);
+  border-radius: 999px;
+  background: rgba(103, 232, 249, 0.08);
+  white-space: nowrap;
+}
 /* 回复下方的推荐追问按钮 */
 .suggest-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .suggest-chip {
@@ -1235,6 +1255,7 @@ body.dragging { cursor: col-resize; user-select: none; }
     <div class="topbar-actions">
       <span class="stats-chip" id="statsChip">加载中…</span>
       <button class="news-toggle" id="kbToggle">📚 知识库 <span class="kb-badge" id="kbCount">0</span></button>
+      <button class="news-toggle" id="motdToggle">🧪 今日分子</button>
       <button class="news-toggle" id="pteToggle">🧪 周期表</button>
       <button class="news-toggle" id="graphToggle">🔬 文献图谱</button>
       <button class="news-toggle" id="subToggle">🔔 订阅</button>
@@ -1248,15 +1269,15 @@ body.dragging { cursor: col-resize; user-select: none; }
   <div class="workspace" id="workspace">
     <!-- ===== Agent 工作台(默认主体) ===== -->
     <main class="agent" id="agentPanel">
-      <div class="chat-scroll" id="chatScroll">
+      <!-- 站内 AI 助手:iframe 内嵌 /assistant.html,取代旧通用问答 -->
+      <iframe class="assistant-frame" src="/assistant.html?embed=1" title="站内 AI 助手" loading="eager"></iframe>
+
+      <!-- 旧通用问答 UI:保留 DOM 供旧脚本引用,视觉上隐藏 -->
+      <div class="chat-scroll" id="chatScroll" style="display:none">
         <div class="chat-inner" id="chatInner"></div>
       </div>
-
-      <!-- 附加文献栏 -->
-      <div class="attach-bar" id="attachBar" hidden></div>
-
-      <!-- 底部输入区 -->
-      <form class="composer" id="composer">
+      <div class="attach-bar" id="attachBar" hidden style="display:none"></div>
+      <form class="composer" id="composer" style="display:none">
         <textarea id="composerInput" rows="1" placeholder="向 Agent 提问化学问题… 输入 /news 唤起新闻文献面板(Enter 发送,Shift+Enter 换行)"></textarea>
         <button type="submit" id="composerSend">发送 ➤</button>
       </form>
@@ -1341,9 +1362,9 @@ body.dragging { cursor: col-resize; user-select: none; }
     <div class="kb-hint">你读过的网页会自动收集到这里。<b>勾选</b>后,后续每轮对话都会携带这些网页的全文,Agent 可跨多篇综合对比回答(最多同时携带 3 篇)。</div>
     <div class="kb-list" id="kbList"></div>
     <div class="kb-foot">
-      <button class="kb-export" id="kbExportBib">📋 BibTeX</button>
-      <button class="kb-export" id="kbExportRis">📋 RIS</button>
-      <button class="kb-export" id="kbExportMd">📋 Markdown</button>
+      <button class="kb-export" id="kbExportBib">📋 导出 BibTeX</button>
+      <button class="kb-export" id="kbExportRis">📋 导出 RIS</button>
+      <button class="kb-export" id="kbExportMd">📋 导出 Markdown</button>
       <button class="kb-export" id="kbExportShare">🔗 分享研究包</button>
       <button class="kb-clear" id="kbClear">🗑 清空知识库</button>
     </div>
@@ -2019,8 +2040,9 @@ function drawGraph() {
   $("graphHint").textContent = `${nodes.length} 篇文献, ${edges.length} 条关联(基于标题关键词重合度)。`;
 }
 
-// 调用 /api/ai/chat(流式),onUpdate 回调累计文本,最终返回完整回复
-async function streamAgentChat(text, onUpdate) {
+// 调用 /api/ai/chat(SSE 流式,含工具调用事件)
+// onUpdate(acc):累计回答文本回调;onTool(ev):工具调用回调;返回 { content, tools }
+async function streamAgentChat(text, onUpdate, onTool) {
   // 文献载荷 = 本次附加的 chips ∪ 知识库勾选条目(按 URL 去重,上限 3 篇)
   const merged = [
     ...attachedArticles.map(a => ({ title: a.title, url: a.url, summary: a.summary, source: a.source })),
@@ -2033,6 +2055,7 @@ async function streamAgentChat(text, onUpdate) {
       message: text,
       history: chatHistory.slice(-10),
       news: newsData.slice(0, 15).map(n => ({ title: n.title, summary: n.summary, type: n.type })),
+      knowledge: knowledgeBase.slice(0, 20).map(k => ({ title: k.title, summary: k.summary, url: k.url, source: k.source })),
       articles: merged,
     }),
   });
@@ -2043,15 +2066,30 @@ async function streamAgentChat(text, onUpdate) {
   }
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
+  let buf = "";
   let acc = "";
+  const tools = [];
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    acc += decoder.decode(value, { stream: true });
-    if (onUpdate) onUpdate(acc);
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) >= 0) {
+      const raw = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      for (const line of raw.split("\n")) {
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        let ev; try { ev = JSON.parse(payload); } catch { continue; }
+        if (ev.type === "tool") { tools.push(ev); if (onTool) onTool(ev); }
+        else if (ev.type === "text") { acc += ev.delta; if (onUpdate) onUpdate(acc); }
+        else if (ev.type === "error") { throw new Error(ev.message || "Agent 错误"); }
+      }
+    }
   }
   if (!acc.trim()) throw new Error("DeepSeek 返回空内容");
-  return acc;
+  return { content: acc, tools };
 }
 
 // 流式渲染时隐藏尾部可能出现的未完成标记([MOL]/[SUGGEST] 不半截显示)
@@ -2066,6 +2104,17 @@ function visibleStreamText(acc) {
     }
   }
   return acc.slice(0, cut);
+}
+
+// 工具调用标签 → 气泡内的小芯片
+function toolChipHtml(tool) {
+  const labels = {
+    search_compound: "识别化合物", similarity_search: "相似结构搜索", substructure_search: "子结构搜索",
+    web_search: "联网检索", search_papers: "论文检索", fetch_webpage: "抓取网页",
+    search_news: "新闻检索", search_knowledge: "知识库检索",
+  };
+  const arg = tool.args ? Object.values(tool.args)[0] : "";
+  return `<span class="tool-chip">🔧 ${escapeHtml(labels[tool.name] || tool.name)}${arg ? " · " + escapeHtml(String(arg).slice(0, 40)) : ""}</span>`;
 }
 
 // AI 纯文本回复 → 气泡 HTML(转义 + 换行/列表简单排版)
@@ -2095,10 +2144,26 @@ function renderCitations(html) {
 }
 
 // 子结构/相似性搜索:PubChem fast API(同步返回,无需轮询)
-async function pubchemSearch(smiles, type, resultsEl) {
-  if (!smiles) { resultsEl.innerHTML = '<span class="bubble-hint">无可用的 SMILES</span>'; return; }
-  resultsEl.innerHTML = '<span class="bubble-hint">搜索中...</span>';
+async function pubchemSearch(smiles, type, resultsEl, cid) {
   resultsEl.dataset.pending = "true";
+  // 无 SMILES 时,先用 CID 反查一次 SMILES
+  if (!smiles && cid) {
+    resultsEl.innerHTML = '<span class="bubble-hint">正在获取 SMILES…</span>';
+    try {
+      const r = await fetch(`${PUBCHEM}/cid/${cid}/property/IsomericSMILES,CanonicalSMILES/JSON`);
+      if (r.ok) {
+        const j = await r.json();
+        const p = j.PropertyTable?.Properties?.[0];
+        smiles = p?.IsomericSMILES || p?.CanonicalSMILES || "";
+      }
+    } catch {}
+  }
+  if (!smiles) {
+    resultsEl.innerHTML = '<span class="bubble-hint">该化合物在 PubChem 中无 SMILES 记录,无法进行结构搜索(常见于无机盐/配位化合物/聚合物/混合物)。</span>';
+    resultsEl.dataset.pending = "false";
+    return;
+  }
+  resultsEl.innerHTML = '<span class="bubble-hint">搜索中...</span>';
   try {
     const endpoint = type === 'substructure' ? 'fastsubstructure' : 'fastsimilarity';
     const url = type === 'substructure'
@@ -2130,7 +2195,7 @@ document.addEventListener("click", (e) => {
   if (!btn) return;
   const resultsEl = btn.parentElement.querySelector(".mol-search-results");
   if (!resultsEl || resultsEl.dataset.pending === "true") return;
-  pubchemSearch(btn.dataset.smiles, btn.dataset.type, resultsEl);
+  pubchemSearch(btn.dataset.smiles, btn.dataset.type, resultsEl, btn.dataset.cid);
 });
 
 // 推荐追问按钮组
@@ -2177,6 +2242,19 @@ function attachArticle(item) {
   addMessage("ai", `已把文献<b>《${escapeHtml(displayName(item))}》</b>附加到对话 📎,我会阅读它的网页内容后回答你的相关问题。可同时附加多篇(最多 3 篇),点芯片上的 ✕ 移除。`);
 }
 
+// 把网页(新闻)直接发送给 iframe 内嵌的 AI 助手阅读(助手调用 readUrl 抓正文)
+function sendPageToAssistant(item) {
+  if (!item) return;
+  // 无论助手在哪个区域,发出去的文献都要记录进会话知识库(供面板展示/图谱/导出)
+  addToKB(item);
+  const frame = document.querySelector('.assistant-frame');
+  if (frame && frame.contentWindow) {
+    frame.contentWindow.postMessage({ type: 'read', title: item.title || '', url: item.url || '' }, location.origin);
+  } else {
+    attachArticle(item);
+  }
+}
+
 // 卡片手柄:拖拽或点击都能附加
 masonryEl.addEventListener("dragstart", (e) => {
   const handle = e.target.closest(".drag-handle");
@@ -2192,7 +2270,7 @@ masonryEl.addEventListener("click", (e) => {
   const handle = e.target.closest(".drag-handle");
   if (!handle) return;
   e.preventDefault();
-  attachArticle(newsIndexMap[parseInt(handle.dataset.dragidx)]);
+  sendPageToAssistant(newsIndexMap[parseInt(handle.dataset.dragidx)]);
 });
 
 // 聊天区接收拖放
@@ -2226,9 +2304,9 @@ function processMechanism(text) {
   if (!text) return text;
   // 1. 还原可能被双重转义的反斜杠
   let t = text.replace(/\\\\/g, '\\');
-  // 2. 保护已在 \[...\] 或 \(...\) 内的数学区域
+  // 2. 保护已在 \[...\]、\(...\) 或 $$...$$ 内的数学区域
   const mathBlocks = [];
-  t = t.replace(/(\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\))/g, (m) => {
+  t = t.replace(/(\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$)/g, (m) => {
     mathBlocks.push(m);
     return '\x00MATH' + (mathBlocks.length - 1) + '\x00';
   });
@@ -2249,13 +2327,14 @@ async function renderMechanismHTML(text) {
   try { if (window.MathJax.startup && window.MathJax.startup.promise) await window.MathJax.startup.promise; } catch {}
   const out = [];
   let last = 0;
-  const re = /\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)/g;
+  const re = /\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)|\$\$([\s\S]*?)\$\$/g;
   let m;
   while ((m = re.exec(src)) !== null) {
     if (m.index > last) out.push(escapeHtml(src.slice(last, m.index)));
-    const latex = m[1] || m[2];
+    const latex = m[1] || m[2] || m[3];
+    const display = !!m[1] || !!m[3];
     try {
-      const node = await window.MathJax.tex2chtmlPromise(latex, { display: !!m[1] });
+      const node = await window.MathJax.tex2chtmlPromise(latex, { display });
       out.push(node.outerHTML || node.innerHTML || escapeHtml(m[0]));
     } catch (e) {
       console.error('MathJax 渲染失败:', latex, e);
@@ -2272,6 +2351,7 @@ function mechanismToText(text) {
   if (!text) return '未提取到';
   let t = text.replace(/\\\\/g, '\\');
   t = t.replace(/\\\[|\\\]|\\\(|\\\)/g, '');
+  t = t.replace(/\$\$/g, '');
   t = t.replace(/\\ce\{([^}]*)\}/g, '$1');
   t = t.replace(/\^\{([^}]*)\}/g, '<sup>$1</sup>');
   t = t.replace(/_\{([^}]*)\}/g, '<sub>$1</sub>');
@@ -2337,6 +2417,13 @@ async function handleUserText(text) {
       typingEl.remove();
       const el = addMessage("ai", moleculeCardHtml(result));
       el.querySelectorAll(".mol-3d").forEach(initMol3D);
+      // 写入对话历史,保证后续「这个分子……」的追问能带上上下文继续讨论
+      const molInfo = result.prop?.MolecularFormula ? `(分子式 ${result.prop.MolecularFormula})` : "";
+      chatHistory.push(
+        { role: "user", content: text },
+        { role: "assistant", content: `已为用户查询并展示「${molQuery}」的分子结构卡片${molInfo}。` }
+      );
+      if (chatHistory.length > 20) chatHistory.splice(0, chatHistory.length - 20);
       agentBusy = false;
       composerSend.disabled = false;
       return;
@@ -2398,10 +2485,19 @@ async function handleUserText(text) {
       const msgEl = addMessage("ai", '<span class="bubble-hint">正在思考…</span>');
       const bubble = msgEl.querySelector(".bubble");
       try {
-        const full = await streamAgentChat(text, (acc) => {
-          bubble.innerHTML = fmtReply(visibleStreamText(acc));
-          scrollChat();
-        });
+        let toolHtml = "";
+        const result = await streamAgentChat(text,
+          (acc) => {
+            bubble.innerHTML = toolHtml + fmtReply(visibleStreamText(acc));
+            scrollChat();
+          },
+          (tool) => {
+            toolHtml += toolChipHtml(tool);
+            bubble.innerHTML = toolHtml + '<span class="bubble-hint">正在调用工具…</span>';
+            scrollChat();
+          }
+        );
+        const full = result.content;
         // 流结束后处理标记:[MOL] 分子结构、[RXN] 反应演示、[SUGGEST] 推荐追问
         const molMarker = full.match(/\[MOL\]([\s\S]+?)\[\/MOL\]/i);
         const rxnMarker = full.match(/\[RXN\]([\s\S]+?)\[\/RXN\]/i);
@@ -2411,7 +2507,7 @@ async function handleUserText(text) {
           .replace(/\[RXN\][\s\S]+?\[\/RXN\]/gi, "")
           .replace(/\[SUGGEST\][\s\S]+?\[\/SUGGEST\]/gi, "")
           .trim();
-        let replyHtml = renderCitations(fmtReply(replyText));
+        let replyHtml = toolHtml + renderCitations(fmtReply(replyText));
         if (molMarker) replyHtml += moleculeCardHtml(await fetchMolecule(molMarker[1].trim()));
         if (rxnMarker) replyHtml += reactionCardHtml(rxnMarker[1].trim());
         if (sugMarker) replyHtml += suggestChipsHtml(sugMarker[1].split("|"));
@@ -2436,6 +2532,16 @@ async function handleUserText(text) {
   }
   agentBusy = false;
   composerSend.disabled = false;
+}
+
+// 统一「问 Agent」入口:转发到 iframe 内嵌的站内 AI 助手(单一助手,含化学问答能力)
+function askAssistant(text) {
+  const frame = document.querySelector('.assistant-frame');
+  if (frame && frame.contentWindow) {
+    frame.contentWindow.postMessage({ type: 'ask', text: String(text || '') }, location.origin);
+  } else {
+    handleUserText(text);
+  }
 }
 
 // 发送交互
@@ -2586,6 +2692,9 @@ async function fetchMolecule(query) {
       const json = await resp.json();
       const prop = json.PropertyTable && json.PropertyTable.Properties && json.PropertyTable.Properties[0];
       if (prop) {
+        // PubChem JSON 输出把 IsomericSMILES/CanonicalSMILES 映射为 SMILES/ConnectivitySMILES
+        prop.IsomericSMILES = prop.IsomericSMILES || prop.SMILES || prop.CanonicalSMILES || prop.ConnectivitySMILES || '';
+        prop.CanonicalSMILES = prop.CanonicalSMILES || prop.ConnectivitySMILES || prop.SMILES || '';
         return {
           imgUrl: `${PUBCHEM}/${kind}/${encodeURIComponent(query)}/PNG`,
           prop, note, query,
@@ -2651,8 +2760,8 @@ function moleculeCardHtml(r) {
     </div>
     <div class="mol-section">
       <div class="mol-section-title">结构搜索</div>
-      <button class="mol-search-btn" data-smiles="${escapeHtml(p.IsomericSMILES || p.CanonicalSMILES || "")}" data-type="substructure">🔍 子结构搜索</button>
-      <button class="mol-search-btn" data-smiles="${escapeHtml(p.IsomericSMILES || p.CanonicalSMILES || "")}" data-type="similarity">🔗 相似性搜索</button>
+      <button class="mol-search-btn" data-smiles="${escapeHtml(p.IsomericSMILES || p.CanonicalSMILES || "")}" data-cid="${p.CID}" data-type="substructure">🔍 子结构搜索</button>
+      <button class="mol-search-btn" data-smiles="${escapeHtml(p.IsomericSMILES || p.CanonicalSMILES || "")}" data-cid="${p.CID}" data-type="similarity">🔗 相似性搜索</button>
       <div class="mol-search-results" data-pending="false"></div>
     </div>
     <span class="bubble-hint">数据源:PubChem CID ${p.CID} · 3D 模型可拖拽旋转 · 想进一步了解它的性质?直接继续问我。</span>`;
@@ -2947,7 +3056,7 @@ function newsTemplate(item, index) {
   return `
     <article class="story ${featured ? "story-featured" : ""}" data-type="${item.type}">
       ${decoHtml}${favBtnHtml(item, index)}
-      <span class="drag-handle" draggable="true" data-dragidx="${index}" title="点击或拖拽到对话区,把本文附加给 Agent">⠿</span>
+      <span class="drag-handle" draggable="true" data-dragidx="${index}" title="点击发送给 AI 助手阅读">⠿</span>
       <div class="story-meta-line"><span class="story-time">${escapeHtml(item.time || "")}</span>${tagHtml}${importantHtml}</div>
       <h2 class="${featured ? "story-title-xl" : "story-title-sm"}">${escapeHtml(title)}</h2>
       <p class="${featured ? "story-summary-lg" : "story-summary"}">${escapeHtml(item.summary || "")}</p>
@@ -3038,6 +3147,7 @@ async function loadRanking() {
     const resp = await fetch("/api/ranking");
     let rankedItems = [];
     if (resp.ok) rankedItems = (await resp.json()).data || [];
+    // 有收藏的新闻排在前面(按收藏数),0 收藏的新闻补充在后面凑满 Top 10
     const rankedTitles = new Set(rankedItems.map(i => i.news_title));
     const unrankedNews = newsData
       .filter(n => !rankedTitles.has(n.title))
@@ -3441,15 +3551,35 @@ const MOTD_LIST = [
 ];
 const motdOverlay = $("motdOverlay");
 let motdCurrent = null;
+let motdDismissed = false; // 用户是否已手动关闭(防止异步完成后弹窗重新打开)
 
-async function showMotd() {
-  const today = new Date().toISOString().slice(0, 10);
-  if (localStorage.getItem("motd_shown") === today) return;
-  localStorage.setItem("motd_shown", today);
-  motdCurrent = MOTD_LIST[Math.floor(Date.now() / 86400000) % MOTD_LIST.length];
+async function showMotd(force) {
+  // 每次打开/刷新页面都弹出今日分子(用户要求,不再受「每日一次」限制)
+  let fromApi = null;
+  try {
+    const resp = await fetch("/api/ai/motd");
+    if (resp.ok) {
+      const json = await resp.json();
+      if (json.code === 200 && json.data && json.data.q) fromApi = json.data;
+    }
+  } catch {}
+
+  if (fromApi) {
+    motdCurrent = { q: fromApi.q, name: fromApi.name, fact: fromApi.fact };
+  } else {
+    motdCurrent = MOTD_LIST[Math.floor(Date.now() / 86400000) % MOTD_LIST.length];
+  }
+
+  // 标题下显示来源说明
+  const titleEl = document.querySelector(".motd-title");
+  if (titleEl) {
+    titleEl.innerHTML = fromApi
+      ? `🧪 今日分子 · 来自新闻《${escapeHtml((fromApi.from_news && fromApi.from_news.title) || "").slice(0, 40)}…》`
+      : "🧪 今日分子 · Molecule of the Day";
+  }
   $("motdName").textContent = motdCurrent.name;
-  $("motdFact").textContent = motdCurrent.fact;
-  motdOverlay.hidden = false;
+  $("motdFact").textContent = fromApi && fromApi.reason ? `${fromApi.fact}（${fromApi.reason}）` : motdCurrent.fact;
+  if (!motdDismissed) motdOverlay.hidden = false;
   // 3D 模型(PubChem 按名称取 3D 坐标,失败回退 2D 图)
   const box = $("motd3d");
   try {
@@ -3469,12 +3599,20 @@ async function showMotd() {
     box.innerHTML = `<img src="${PUBCHEM}/name/${encodeURIComponent(motdCurrent.q)}/PNG" alt="${escapeHtml(motdCurrent.name)} 结构式">`;
   }
 }
-$("motdClose").addEventListener("click", () => { motdOverlay.hidden = true; });
-$("motdOk").addEventListener("click", () => { motdOverlay.hidden = true; });
-motdOverlay.addEventListener("click", (e) => { if (e.target === motdOverlay) motdOverlay.hidden = true; });
+function dismissMotd() { motdDismissed = true; motdOverlay.hidden = true; }
+$("motdToggle").addEventListener("click", () => {
+  // 顶栏「今日分子」入口:已打开则关闭,否则随时重新查看(不受每日一次的自动弹窗限制)
+  if (!motdOverlay.hidden) { dismissMotd(); return; }
+  motdDismissed = false;
+  if (motdCurrent) { motdOverlay.hidden = false; return; } // 今日分子已在内存,直接显示
+  showMotd(true); // 尚未加载(如今天已看过自动弹窗被跳过),强制拉取并显示
+});
+$("motdClose").addEventListener("click", dismissMotd);
+$("motdOk").addEventListener("click", dismissMotd);
+motdOverlay.addEventListener("click", (e) => { if (e.target === motdOverlay) dismissMotd(); });
 $("motdAsk").addEventListener("click", () => {
-  motdOverlay.hidden = true;
-  if (motdCurrent) handleUserText(`介绍一下${motdCurrent.name}:它是什么、有什么用途和有趣的性质?`);
+  dismissMotd();
+  if (motdCurrent) askAssistant(`介绍一下${motdCurrent.name}:它是什么、有什么用途和有趣的性质?`);
 });
 
 /* =========================================================
@@ -3519,7 +3657,7 @@ $("pteDetail").addEventListener("click", (e) => {
   if (!e.target.closest(".pte-ask") || !pteCurrent) return;
   const [, sym, cn] = pteCurrent;
   pteOverlay.hidden = true;
-  handleUserText(`介绍一下${cn}(${sym})元素:基本性质、常见化合物和有趣的应用。`);
+  askAssistant(`介绍一下${cn}(${sym})元素:基本性质、常见化合物和有趣的应用。`);
 });
 $("pteToggle").addEventListener("click", () => { pteOverlay.hidden = false; });
 $("pteClose").addEventListener("click", () => { pteOverlay.hidden = true; });

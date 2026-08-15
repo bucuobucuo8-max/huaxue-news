@@ -1,7 +1,9 @@
 /* =========================
    Cloudflare Pages Function: 收藏管理 API
-   GET  /api/favorites?visitor_id=xxx  查询指定用户的所有收藏
-   POST /api/favorites                 新增收藏并更新统计
+   GET    /api/favorites?visitor_id=xxx  查询指定用户的所有收藏
+   POST   /api/favorites                 新增收藏(去重)
+   DELETE /api/favorites                 取消收藏
+   说明:使用线上 D1 favorites 表真实结构 (client_id, title, url, source)
    ========================= */
 
 const CORS_HEADERS = {
@@ -21,7 +23,7 @@ export async function onRequestGet(context) {
   try {
     const { request, env } = context;
     const url = new URL(request.url);
-    const visitor_id = url.searchParams.get('visitor_id');
+    const visitor_id = url.searchParams.get('visitor_id') || url.searchParams.get('client_id');
 
     if (!visitor_id) {
       return new Response(JSON.stringify({
@@ -31,15 +33,27 @@ export async function onRequestGet(context) {
       }), { status: 400, headers: CORS_HEADERS });
     }
 
-    // 查询该访客的所有收藏记录
+    // 查询该访客的所有收藏记录(真实列: client_id/title/url/source)
     const { results } = await env.DB.prepare(
-      'SELECT id, visitor_id, news_title, news_url, news_source, news_type, news_summary, created_at FROM favorites WHERE visitor_id = ? ORDER BY created_at DESC'
+      'SELECT id, client_id, title, url, source, created_at FROM favorites WHERE client_id = ? ORDER BY created_at DESC'
     ).bind(visitor_id).all();
+
+    // 映射为对外统一的 news_* 字段
+    const data = results.map(r => ({
+      id: r.id,
+      visitor_id: r.client_id,
+      news_title: r.title,
+      news_url: r.url,
+      news_source: r.source,
+      news_type: '',
+      news_summary: '',
+      created_at: r.created_at,
+    }));
 
     return new Response(JSON.stringify({
       code: 200,
       message: 'success',
-      data: results,
+      data,
     }), { headers: CORS_HEADERS });
 
   } catch (e) {
@@ -51,36 +65,38 @@ export async function onRequestGet(context) {
   }
 }
 
-// 新增收藏,同时更新新闻统计表
+// 新增收藏(同一访客重复收藏同一条新闻时去重,不重复计数)
 export async function onRequestPost(context) {
   try {
     const { request, env } = context;
     const body = await request.json();
-    const { visitor_id, news_title, news_url, news_source, news_type, news_summary } = body;
+    // 兼容前端字段:visitor_id/news_title 与 client_id/title 都接受
+    const client_id = body.visitor_id || body.client_id;
+    const title = body.news_title || body.title;
+    const url = body.news_url || body.url || '';
+    const source = body.news_source || body.source || '';
 
-    if (!visitor_id || !news_title) {
+    if (!client_id || !title) {
       return new Response(JSON.stringify({
         code: 400,
         message: '缺少 visitor_id 或 news_title',
       }), { status: 400, headers: CORS_HEADERS });
     }
 
-    // 插入收藏记录到 favorites 表
-    await env.DB.prepare(
-      'INSERT INTO favorites (visitor_id, news_title, news_url, news_source, news_type, news_summary) VALUES (?, ?, ?, ?, ?, ?)'
-    ).bind(visitor_id, news_title, news_url || '', news_source || '', news_type || '', news_summary || '').run();
+    // 去重:已收藏则直接返回,不再插入
+    const existing = await env.DB.prepare(
+      'SELECT id FROM favorites WHERE client_id = ? AND title = ? LIMIT 1'
+    ).bind(client_id, title).first();
+    if (existing) {
+      return new Response(JSON.stringify({
+        code: 200,
+        message: 'already favorited',
+      }), { headers: CORS_HEADERS });
+    }
 
-    // 使用 UPSERT 更新 news_stats 表:存在则 favorite_count+1,不存在则新建并置为1
     await env.DB.prepare(
-      `INSERT INTO news_stats (news_title, news_url, news_source, news_type, favorite_count, updated_at)
-       VALUES (?, ?, ?, ?, 1, datetime('now'))
-       ON CONFLICT(news_title) DO UPDATE SET
-         favorite_count = favorite_count + 1,
-         news_url = excluded.news_url,
-         news_source = excluded.news_source,
-         news_type = excluded.news_type,
-         updated_at = datetime('now')`
-    ).bind(news_title, news_url || '', news_source || '', news_type || '').run();
+      'INSERT INTO favorites (client_id, title, url, source) VALUES (?, ?, ?, ?)'
+    ).bind(client_id, title, url, source).run();
 
     return new Response(JSON.stringify({
       code: 200,
@@ -95,29 +111,24 @@ export async function onRequestPost(context) {
   }
 }
 
-// 取消收藏,同时更新统计表
+// 取消收藏
 export async function onRequestDelete(context) {
   try {
     const { request, env } = context;
     const body = await request.json();
-    const { visitor_id, news_title } = body;
+    const client_id = body.visitor_id || body.client_id;
+    const title = body.news_title || body.title;
 
-    if (!visitor_id || !news_title) {
+    if (!client_id || !title) {
       return new Response(JSON.stringify({
         code: 400,
         message: '缺少 visitor_id 或 news_title',
       }), { status: 400, headers: CORS_HEADERS });
     }
 
-    // 删除 favorites 表中的记录
     await env.DB.prepare(
-      'DELETE FROM favorites WHERE visitor_id = ? AND news_title = ?'
-    ).bind(visitor_id, news_title).run();
-
-    // news_stats 表 favorite_count - 1(不低于0)
-    await env.DB.prepare(
-      `UPDATE news_stats SET favorite_count = MAX(favorite_count - 1, 0), updated_at = datetime('now') WHERE news_title = ?`
-    ).bind(news_title).run();
+      'DELETE FROM favorites WHERE client_id = ? AND title = ?'
+    ).bind(client_id, title).run();
 
     return new Response(JSON.stringify({
       code: 200,

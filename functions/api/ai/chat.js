@@ -1,18 +1,22 @@
 /* =========================
-   Cloudflare Pages Function: DeepSeek 化学智能体对话
+   Cloudflare Pages Function: DeepSeek 化学智能体对话(支持工具调用 / function calling)
    POST /api/ai/chat
    body: {
      "message": "用户问题",
-     "history": [{ "role": "user"|"assistant", "content": "..." }],  // 最近对话,最多保留10条
-     "news": [{ "title": "...", "summary": "...", "type": "..." }],    // 今日新闻上下文(可选)
-     "articles": [{ "title": "...", "url": "...", "summary": "...", "source": "..." }]  // 用户附加的文献(可选,最多3篇)
+     "history": [{ "role": "user"|"assistant", "content": "..." }],
+     "news": [{ "title": "...", "summary": "...", "type": "..." }],
+     "knowledge": [{ "title": "...", "url": "...", "summary": "...", "source": "..." }],
+     "articles": [{ "title": "...", "url": "...", "summary": "...", "source": "..." }]
    }
-   附加文献时,服务端会抓取网页正文(HTMLRewriter 提取),注入提示词供 Agent 阅读后作答。
-   返回: { code: 200, data: "AI 回复文本" }
+   服务端以 Agent 循环调用 DeepSeek 工具(tool_calls),流式返回 SSE:
+     data: {"type":"tool","name":"...","args":{...}}   // 正在调用某工具
+     data: {"type":"text","delta":"..."}               // 最终回答片段(打字机)
+     data: {"type":"done","toolCalls":[...]}           // 结束
+     data: {"type":"error","message":"..."}
    ========================= */
 
 const CORS_HEADERS = {
-  'Content-Type': 'application/json; charset=utf-8',
+  'Content-Type': 'text/event-stream; charset=utf-8',
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
@@ -41,13 +45,20 @@ function fetchWithTimeout(url, options, ms) {
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+async function fetchJson(url, ms) {
+  const resp = await fetchWithTimeout(url, {
+    headers: { 'Accept': 'application/json', 'User-Agent': 'ChemistryAgent/1.0 (education)' },
+  }, ms);
+  if (!resp.ok) return null;
+  try { return await resp.json(); } catch { return null; }
+}
+
 // 途径一:DOI 链接走官方 API(Zenodo / Crossref),稳定不怕反爬
 async function fetchViaDoiApi(url) {
   const m = url.match(/doi\.org\/(10\.\d{4,9}\/\S+)/i);
   if (!m) return '';
   const doi = m[1].replace(/[.\s]+$/, '');
   try {
-    // Zenodo 数据集/预印本:Records API 含完整描述
     const zm = doi.match(/^10\.5281\/zenodo\.(\d+)$/i);
     if (zm) {
       const resp = await fetchWithTimeout(`https://zenodo.org/api/records/${zm[1]}`, {
@@ -62,7 +73,6 @@ async function fetchViaDoiApi(url) {
       }
       return '';
     }
-    // 通用 DOI:Crossref 元数据(部分含摘要)
     const resp = await fetchWithTimeout(`https://api.crossref.org/works/${encodeURIComponent(doi)}`, {
       headers: { 'Accept': 'application/json' },
     }, 6000);
@@ -99,10 +109,9 @@ async function fetchDirect(url) {
         },
       })
       .transform(resp);
-    await rewritten.text(); // 消费流,触发提取
+    await rewritten.text();
     text = text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
     if (text.length >= 200) return text.slice(0, 3000);
-    // 结构化提取内容太少:重新抓取原始 HTML 做全文粗提取
     const raw = await fetchWithTimeout(url, { redirect: 'follow', headers }, 6000);
     if (raw.ok) {
       const fallback = htmlToText(await raw.text());
@@ -120,15 +129,6 @@ async function fetchPageText(url) {
   return (viaApi.length >= direct.length ? viaApi : direct).slice(0, 3000);
 }
 
-// ===== 联网检索 =====
-async function fetchJson(url, ms) {
-  const resp = await fetchWithTimeout(url, {
-    headers: { 'Accept': 'application/json', 'User-Agent': 'ChemistryAgent/1.0 (education)' },
-  }, ms);
-  if (!resp.ok) return null;
-  try { return await resp.json(); } catch { return null; }
-}
-
 // 从 PubChem 识别化合物:queryKind 依次尝试,返回识别描述或空串
 async function pubchemIdentify(q, kinds) {
   for (const kind of kinds) {
@@ -139,35 +139,9 @@ async function pubchemIdentify(q, kinds) {
       );
       const p = json?.PropertyTable?.Properties?.[0];
       if (p) {
-        return `用户给出的「${q}」经 PubChem 识别为:${p.IUPACName}(分子式 ${p.MolecularFormula},分子量 ${p.MolecularWeight} g/mol,SMILES ${p.SMILES || p.IsomericSMILES || ''},CID ${p.CID})。`;
+        return `「${q}」经 PubChem 识别为:${p.IUPACName}(分子式 ${p.MolecularFormula},分子量 ${p.MolecularWeight} g/mol,SMILES ${p.SMILES || p.IsomericSMILES || ''},CID ${p.CID})。`;
       }
     } catch {}
-  }
-  return '';
-}
-
-// 识别用户输入中的结构式/分子式/SMILES(整句或句中 token)
-async function identifyStructure(message) {
-  const q = message.trim();
-  const charset = /^[A-Za-z0-9@+\-\[\]()=#$\\/.%]+$/;
-  const tryToken = async (token) => {
-    if (token.length < 2 || token.length > 80) return '';
-    if (/^([A-Z][a-z]?\d*)+$/.test(token)) return pubchemIdentify(token, ['fastformula', 'name', 'smiles']);
-    if (/[()=#\[\]@\\]/.test(token)) return pubchemIdentify(token, ['smiles', 'name', 'fastformula']);
-    if (/\d/.test(token) && /[A-Za-z]/.test(token)) return pubchemIdentify(token, ['smiles', 'fastformula', 'name']);
-    return '';
-  };
-  // 整句就是结构式(无空格、无中文)
-  if (!/\s/.test(q) && charset.test(q)) {
-    const hit = await tryToken(q);
-    if (hit) return hit;
-  }
-  // 句中含结构式 token(如"这个 CH3COOH 是什么")
-  const tokens = q.match(/[A-Za-z0-9@+\-\[\]()=#$\\/.%]{3,80}/g) || [];
-  for (const t of tokens) {
-    if (!/\d/.test(t) && !/[()=#\[\]@\\]/.test(t)) continue; // 必须含数字或 SMILES 特征字符
-    const hit = await tryToken(t);
-    if (hit) return hit;
   }
   return '';
 }
@@ -184,7 +158,6 @@ async function searchWikipedia(query) {
       const pages = e?.query?.pages || {};
       const page = Object.values(pages)[0];
       let extract = (page?.extract || '').trim().slice(0, 700);
-      // action API 无摘要时,回退 REST summary 接口
       if (!extract) {
         const r = await fetchJson(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`, 4000);
         extract = (r?.extract || '').trim().slice(0, 700);
@@ -195,45 +168,243 @@ async function searchWikipedia(query) {
   return '';
 }
 
+// ===== 工具实现 =====
+async function toolSearchCompound(q) {
+  const query = String(q || '').trim();
+  if (!query) return '缺少化合物名称/分子式/SMILES';
+  const info = await pubchemIdentify(query, ['fastformula', 'name', 'smiles']);
+  return info || `未能在 PubChem 中识别「${query}」。`;
+}
+
+async function toolSimilarity(smiles) {
+  const s = String(smiles || '').trim();
+  if (!s) return '缺少 SMILES';
+  const data = await fetchJson(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/fastsimilarity/smiles/${encodeURIComponent(s)}/cids/JSON?MaxRecords=5&Threshold=80`, 6000);
+  const cids = data?.IdentifierList?.CID || [];
+  if (!cids.length) return '未找到相似化合物。';
+  const props = await Promise.all(cids.map(cid =>
+    fetchJson(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/property/IUPACName,MolecularFormula,MolecularWeight/JSON`, 5000)
+  ));
+  const lines = props.map((p, i) => {
+    const x = p?.PropertyTable?.Properties?.[0];
+    return x ? `${i + 1}. ${x.IUPACName}(${x.MolecularFormula}, ${x.MolecularWeight} g/mol, CID ${cids[i]})` : `${i + 1}. CID ${cids[i]}`;
+  });
+  return lines.join('\n') || '未找到相似化合物。';
+}
+
+async function toolSubstructure(smiles) {
+  const s = String(smiles || '').trim();
+  if (!s) return '缺少 SMILES';
+  const data = await fetchJson(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/fastsubstructure/smiles/${encodeURIComponent(s)}/cids/JSON?MaxRecords=5`, 6000);
+  const cids = data?.IdentifierList?.CID || [];
+  if (!cids.length) return '未找到包含该子结构的化合物。';
+  const props = await Promise.all(cids.map(cid =>
+    fetchJson(`https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/${cid}/property/IUPACName,MolecularFormula,MolecularWeight/JSON`, 5000)
+  ));
+  const lines = props.map((p, i) => {
+    const x = p?.PropertyTable?.Properties?.[0];
+    return x ? `${i + 1}. ${x.IUPACName}(${x.MolecularFormula}, ${x.MolecularWeight} g/mol, CID ${cids[i]})` : `${i + 1}. CID ${cids[i]}`;
+  });
+  return lines.join('\n') || '未找到包含该子结构的化合物。';
+}
+
+async function toolSearchPapers(q) {
+  const query = String(q || '').trim();
+  if (!query) return '缺少检索关键词';
+  const [cr, oa] = await Promise.all([
+    fetchJson(`https://api.crossref.org/works?query=${encodeURIComponent(query)}&rows=5&select=DOI,title,container-title,published&mailto=info@huaxue-news.pages.dev`, 7000),
+    fetchJson(`https://api.openalex.org/works?search=${encodeURIComponent(query)}&per_page=5&mailto=info@huaxue-news.pages.dev`, 7000),
+  ]);
+  const out = [];
+  for (const it of (cr?.message?.items || []).slice(0, 5)) {
+    const t = String(it.title?.[0] || '').replace(/<[^>]+>/g, '');
+    if (t) out.push(`[Crossref] ${t}${it.DOI ? ' — https://doi.org/' + it.DOI : ''}`);
+  }
+  for (const it of (oa?.results || []).slice(0, 5)) {
+    const t = String(it.title || '');
+    if (t) out.push(`[OpenAlex] ${t} (${it.publication_year || ''})${it.doi ? ' — https://doi.org/' + it.doi : ''}`);
+  }
+  return out.length ? out.join('\n') : `未检索到「${query}」相关论文。`;
+}
+
+function toolSearchNews(q, news) {
+  const list = Array.isArray(news) ? news : [];
+  const ql = String(q || '').toLowerCase();
+  let hits = list.filter(n => ((n.title || '') + (n.summary || '')).toLowerCase().includes(ql));
+  if (!hits.length) hits = list.slice(0, 5);
+  if (!hits.length) return '暂无新闻数据。';
+  return hits.map((n, i) => `${i + 1}. [${n.type || ''}] ${n.title}${n.summary ? ' — ' + String(n.summary).slice(0, 80) : ''}`).join('\n');
+}
+
+function toolSearchKnowledge(q, kb) {
+  const list = Array.isArray(kb) ? kb : [];
+  const ql = String(q || '').toLowerCase();
+  let hits = list.filter(k => ((k.title || '') + (k.summary || '')).toLowerCase().includes(ql));
+  if (!hits.length) hits = list.slice(0, 5);
+  if (!hits.length) return '知识库为空。';
+  return hits.map((k, i) => `${i + 1}. ${k.title}${k.summary ? ' — ' + String(k.summary).slice(0, 80) : ''}${k.url ? ' (' + k.url + ')' : ''}`).join('\n');
+}
+
+// ===== 工具注册表(DeepSeek function calling schema) =====
+const TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'search_compound',
+      description: '在 PubChem 中识别化合物。输入化合物英文名、分子式或 SMILES,返回 IUPAC 名称、分子式、分子量、SMILES 和 CID。',
+      parameters: { type: 'object', properties: { query: { type: 'string', description: '化合物英文名、分子式或 SMILES' } }, required: ['query'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'similarity_search',
+      description: '按 SMILES 检索与目标化合物结构相似的化合物(PubChem 相似性搜索)。',
+      parameters: { type: 'object', properties: { smiles: { type: 'string', description: '参考化合物的 SMILES' } }, required: ['smiles'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'substructure_search',
+      description: '按 SMILES 检索包含该子结构的化合物(PubChem 子结构搜索)。',
+      parameters: { type: 'object', properties: { smiles: { type: 'string', description: '子结构 SMILES' } }, required: ['smiles'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: '通过 Wikipedia 联网检索某个概念/物质的摘要信息(中英文)。',
+      parameters: { type: 'object', properties: { query: { type: 'string', description: '检索词' } }, required: ['query'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_papers',
+      description: '检索学术论文(Crossref + OpenAlex),返回论文标题、DOI、年份。',
+      parameters: { type: 'object', properties: { query: { type: 'string', description: '论文检索关键词' } }, required: ['query'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'fetch_webpage',
+      description: '抓取指定 URL 的网页正文文本(用于阅读文献/新闻详情)。',
+      parameters: { type: 'object', properties: { url: { type: 'string', description: '网页 URL' } }, required: ['url'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_news',
+      description: '检索今日化学新闻(基于站内已加载的新闻列表)。',
+      parameters: { type: 'object', properties: { query: { type: 'string', description: '新闻检索关键词' } }, required: ['query'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_knowledge',
+      description: '检索用户收藏的知识库文献。',
+      parameters: { type: 'object', properties: { query: { type: 'string', description: '检索关键词' } }, required: ['query'] },
+    },
+  },
+];
+
+async function executeTool(name, args, ctx) {
+  switch (name) {
+    case 'search_compound': return await toolSearchCompound(args.query);
+    case 'similarity_search': return await toolSimilarity(args.smiles);
+    case 'substructure_search': return await toolSubstructure(args.smiles);
+    case 'web_search': return (await searchWikipedia(String(args.query || '').trim())) || '未检索到相关信息。';
+    case 'search_papers': return await toolSearchPapers(args.query);
+    case 'fetch_webpage': return await fetchPageText(String(args.url || '').trim()) || '网页抓取失败或无正文。';
+    case 'search_news': return toolSearchNews(args.query, ctx.news);
+    case 'search_knowledge': return toolSearchKnowledge(args.query, ctx.knowledge);
+    default: return '未知工具: ' + name;
+  }
+}
+
+// 调用 DeepSeek(非流式,用于工具循环)
+async function callDeepSeek(env, messages, tools) {
+  const body = { model: 'deepseek-chat', messages, stream: false, temperature: 0.7 };
+  if (tools && tools.length) { body.tools = tools; body.tool_choice = 'auto'; }
+  const resp = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${env.DEEPSEEK_API_KEY}` },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const t = await resp.text().catch(() => '');
+    throw new Error(`DeepSeek 接口错误 ${resp.status}: ${t.slice(0, 200)}`);
+  }
+  return resp.json();
+}
+
+// Agent 循环:让模型自主决定调用工具,多步执行,直到给出最终回答
+async function runAgentLoop(env, messages, ctx, send) {
+  const toolCalls = [];
+  for (let i = 0; i < 5; i++) {
+    const data = await callDeepSeek(env, messages, TOOLS);
+    const msg = data.choices?.[0]?.message;
+    if (!msg) throw new Error('DeepSeek 返回为空');
+    if (!msg.tool_calls || msg.tool_calls.length === 0) {
+      return { finalContent: msg.content || '', toolCalls };
+    }
+    messages.push({ role: 'assistant', content: msg.content || '', tool_calls: msg.tool_calls });
+    for (const tc of msg.tool_calls) {
+      const name = tc.function?.name || 'unknown';
+      let args = {};
+      try { args = JSON.parse(tc.function?.arguments || '{}'); } catch {}
+      send({ type: 'tool', name, args });
+      let result;
+      try { result = await executeTool(name, args, ctx); }
+      catch (e) { result = '工具执行失败: ' + (e.message || e); }
+      toolCalls.push({ name, args, result });
+      messages.push({ role: 'tool', tool_call_id: tc.id, content: String(result || '').slice(0, 6000) });
+    }
+  }
+  // 达到最大轮次:强制生成最终回答(不带工具)
+  const data = await callDeepSeek(env, messages, []);
+  const msg = data.choices?.[0]?.message;
+  return { finalContent: msg?.content || '', toolCalls };
+}
+
 export async function onRequestPost(context) {
   const { request, env } = context;
 
   if (!env.DEEPSEEK_API_KEY) {
     return new Response(JSON.stringify({
-      code: 500,
-      message: '未配置 DEEPSEEK_API_KEY 环境变量',
-      data: null,
-    }), { status: 500, headers: CORS_HEADERS });
+      code: 500, message: '未配置 DEEPSEEK_API_KEY 环境变量', data: null,
+    }), { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
   }
 
   try {
     const body = await request.json();
     const message = (body.message || '').trim();
-    // 提示注入防护:移除可能操控 AI 行为的指令性文本
     const sanitizedMessage = message
       .replace(/\[SYSTEM\]|\[INST\]|\[\/INST\]|ignore (previous|above) instructions|忽略(以上|之前)指令|你现在是|pretend you are/gi, '')
       .trim();
-    if (!message) {
+    if (!sanitizedMessage) {
       return new Response(JSON.stringify({
-        code: 400,
-        message: '缺少 message 参数',
-        data: null,
-      }), { status: 400, headers: CORS_HEADERS });
+        code: 400, message: '缺少 message 参数', data: null,
+      }), { status: 400, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
     }
 
-    // 对话历史:只保留最近 10 条,防止 token 膨胀
     const history = Array.isArray(body.history) ? body.history.slice(-10) : [];
     const historyMsgs = history
       .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
       .map(m => ({ role: m.role, content: m.content.slice(0, 2000) }));
 
-    // 今日新闻上下文:压缩成标题清单,让 Agent 能结合最新资讯回答
     const news = Array.isArray(body.news) ? body.news.slice(0, 15) : [];
+    const knowledge = Array.isArray(body.knowledge) ? body.knowledge.slice(0, 20) : [];
     const newsDigest = news
       .map((n, i) => `${i + 1}. [${n.type || ''}] ${n.title}${n.summary ? ' — ' + String(n.summary).slice(0, 80) : ''}`)
       .join('\n');
 
-    // 用户附加的文献:抓取网页正文(并行),供 Agent 阅读后作答
+    // 用户附加的文献:抓取网页正文,供 Agent 阅读
     const articles = Array.isArray(body.articles) ? body.articles.slice(0, 3) : [];
     let attachSection = '';
     if (articles.length > 0) {
@@ -246,65 +417,29 @@ export async function onRequestPost(context) {
       }).join('\n\n');
     }
 
-    // 联网检索:结构识别(PubChem)+ Wikipedia 摘要,并行执行,失败不影响主流程
-    const [structureInfo, wikiInfo] = await Promise.all([
-      identifyStructure(sanitizedMessage),
-      searchWikipedia(sanitizedMessage),
-    ]);
-    const webContext = [structureInfo, wikiInfo].filter(Boolean).join('\n');
-
-    // 检测特殊模式
-    const isDeepRead = /深度阅读|解读论文|拆解这篇|详细分析这|精读/.test(sanitizedMessage) && articles.length > 0;
-    const isCompare = /对比分析|比较这|对比这|证据矩阵|综合对比/.test(sanitizedMessage) && articles.length >= 2;
-    const isHypothesis = /提出假设|生成假设|假说|可验证假设/.test(sanitizedMessage);
-    const isExperiment = /实验设计|设计实验|实验方案|实验计划/.test(sanitizedMessage);
-    const isTimeline = /时间线|演变|发展历程|如何演变|观点演变/.test(sanitizedMessage);
-    const isControversy = /争议|矛盾|相互冲突|分歧/.test(sanitizedMessage);
-    const isAgentTask = /找出.{0,20}(进展|论文|研究).{0,20}(排除|比较|生成|报告|总结)|帮我.{0,10}(调研|检索|搜索|查).{0,20}(论文|文献|研究)/.test(sanitizedMessage);
-
     const systemPrompt =
       '你是「化学智能体」,一位面向化学专业学生与研究员的 AI 助手,运行在一个化学新闻简讯网站上。' +
-      '请用简体中文回答,风格:专业但通俗,适当使用 emoji,化学术语保留英文原文并附中文解释(如 "catalyst(催化剂)""electrophile(亲电试剂)"),避免翻译损失专业含义。' +
-      '回答要求:1) 直接回答问题,不要说"作为AI";2) 一般问题控制在 200 字以内,需要详细解释时可适当延长;' +
-      '3) 如果问题与今日新闻相关,主动引用下方新闻清单中的条目(用「标题」格式引用);' +
-      '4) 与化学/材料/化工无关的问题,简短回答后引导回化学话题;' +
-      '5) 本平台支持分子结构可视化:当用户想看某化合物的结构式/分子式/分子模型/结构图(任意表述,如"生成…的可视化图像""画一下…"),' +
-      '正常用文字回答,并在回复末尾单独一行输出标记 [MOL]化合物英文名或SMILES[/MOL],前端会自动渲染结构图;' +
-      '不要说自己无法生成图像;一次最多输出一个 [MOL] 标记;' +
-      '6) 书写化学方程式/化学式时,必须使用 mhchem 语法:方程式整体放在 \\[ \\] 中,式内用 \\ce{} 书写(如 \\[ \\ce{2H2 + O2 -> 2H2O} \\]),反应条件写在箭头上(如 \\ce{->[催化剂]}),前端会用 MathJax 渲染为标准化学排版,不要输出图片或纯文本方程式;' +
-      '7) 每次回复末尾必须单独一行输出推荐追问标记 [SUGGEST]问题1|问题2|问题3[/SUGGEST]:3 个用户可能感兴趣的后续问题,用 | 分隔,每条 20 字以内,具体且与化学/今日新闻/当前话题相关(例如"布洛芬的结构式""今日热点有哪些""这条新闻的意义"),前端会渲染为可点击的推荐按钮。' +
-      '\n11) 【证据级引用】每个关键结论后标注引用来源,格式 [1] [2]。在回复末尾(SUGGEST标记之前)输出参考文献块 [REFS]每条占一行: [n] 来源标题 - URL[/REFS]。附加文献按顺序编号 [1][2][3],联网检索继续编号。每个关键结论用括号标注证据类型:(文献事实) (模型推断) (存在争议)。' +
-      (isDeepRead
-        ? '\n12) 【论文深度阅读模式】对附加文献结构化解读,用以下板块(**加粗标题**开头): **研究问题与假设** / **实验方法** / **关键数据**(数值和统计显著性) / **主要结论** / **局限性** / **可复现步骤** / **"作者声称" vs "数据实际支持"**(区分过度解读与数据支撑)。每板块标注引用[1]。'
-        : '') +
-      (isCompare
-        ? '\n12) 【对比分析模式】生成 Markdown 证据矩阵表格(用|分隔),列: 论文|研究问题|方法|样本/条件|关键结果|局限性|证据等级(A/B/C)。表格后用文字解释结果一致或冲突及差异来源。标注引用[1][2]。'
-        : '') +
-      (isHypothesis
-        ? '\n13) 【假设生成器】基于知识库和已知文献,提出 2-3 个可验证的科学假设。每个假设包含: 假设陈述 / 依据(引用[1]) / 潜在反证 / 建议的验证实验(变量、对照、预期结果)。明确标注(模型推断)。'
-        : '') +
-      (isExperiment
-        ? '\n13) 【实验设计助手】输出结构化实验设计方案: 研究目标 / 自变量与因变量 / 实验组与对照组 / 样本量与重复 / 测量指标与方法 / 潜在混杂因素及控制 / 数据分析方案 / 所需仪器试剂。'
-        : '') +
-      (isTimeline
-        ? '\n13) 【结论时间线】按年份梳理某个科学观点/技术/发现的演变历程,输出 Markdown 时间线: **年份** - 关键事件/发现(引用来源) - 当时学界态度。标注哪些观点被后续推翻或修正。'
-        : '') +
-      (isControversy
-        ? '\n13) 【争议雷达】识别当前话题中相互矛盾的研究结论,输出: 争议焦点 / 支持方观点与证据(引用) / 反对方观点与证据(引用) / 差异来源分析(方法差异/样本差异/条件差异) / 当前共识(如有)。'
-        : '') +
-      (isAgentTask
-        ? '\n13) 【科研 Agent 工作流】用户提出了研究任务,请按步骤执行: 1. 搜索(基于今日新闻和知识库) 2. 去重筛选 3. 提取关键信息 4. 验证引用 5. 生成结构化报告。每步标注进度,允许用户检查。最终输出含引用的研究简报。'
-        : '') +
-      '\n14) 【证据等级评分】当评估文献或研究结论时,给出多维证据评分(不只是一个总分): 样本规模(大/中/小) / 研究类型(综述/RCT/观察/个案) / 期刊影响力 / 重复验证情况 / 撤稿记录。用表格展示。' +
+      '请用简体中文回答,风格:专业但通俗,适当使用 emoji,化学术语保留英文原文并附中文解释(如 "catalyst(催化剂)")。' +
+      '\n你拥有工具调用能力,可根据需要自主决定调用一个或多个工具(可多步连续调用),获取实时/结构化信息后再作答:' +
+      '\n- search_compound:PubChem 识别化合物(英文名/分子式/SMILES)' +
+      '\n- similarity_search:按 SMILES 检索相似化合物' +
+      '\n- substructure_search:按 SMILES 检索子结构' +
+      '\n- web_search:Wikipedia 联网检索' +
+      '\n- search_papers:检索学术论文(Crossref/OpenAlex)' +
+      '\n- search_news:检索今日化学新闻' +
+      '\n- search_knowledge:检索用户知识库文献' +
+      '\n- fetch_webpage:抓取指定网页正文' +
+      '\n回答要求:1) 直接回答,不要说"作为AI";一般问题 200 字以内,需要详细解释时可延长;' +
+      '2) 与化学/材料/化工无关的问题,简短回答后引导回化学话题;' +
+      '3) 书写化学方程式/化学式必须用 mhchem 语法:方程式整体放 \\[ \\] 中,式内用 \\ce{}(如 \\[ \\ce{2H2 + O2 -> 2H2O} \\]);' +
+      '4) 当用户想看某化合物的结构时,正常文字回答,并在回复末尾单独一行输出 [MOL]化合物英文名或SMILES[/MOL],一次最多一个;' +
+      '5) 每次回复末尾单独一行输出 [SUGGEST]问题1|问题2|问题3[/SUGGEST],3 个推荐追问,用 | 分隔,各 20 字以内;' +
+      '6) 关键结论标注引用 [1] [2],并在回复末尾(SUGGEST 之前)输出 [REFS]每行 [n] 来源标题 - URL[/REFS];' +
+      '7) 涉及具体反应(写出 \\ce 方程式)时,在末尾输出 [RXN]反应物SMILES>>生成物SMILES[/RXN],不确定 SMILES 则不要输出该标记;' +
       (attachSection
-        ? '\n8) 用户附加了文献,请优先依据文献网页内容回答,并在回答开头注明依据的是哪篇文献(如「根据《标题》…」);若网页内容抓取失败,基于标题与摘要回答并说明;若附加了多篇文献,可以跨文献综合、对比、归纳回答;此时推荐追问应围绕附加文献。'
+        ? '\n8) 用户附加了文献,请优先依据文献网页内容回答,并在回答开头注明依据哪篇文献(如「根据《标题》…」)。'
         : '') +
-      (webContext
-        ? '\n9) 下方附有联网检索结果,请优先依据它回答并自然注明来源(如"据 Wikipedia");若包含 PubChem 结构识别结果,说明该物质是什么、有何用途,并在回复末尾输出对应的 [MOL] 标记(使用识别结果中的 SMILES 或英文名)以便前端渲染结构图。'
-        : '') +
-      '\n10) 当回复涉及具体化学反应(你写出了 \\ce 方程式)时,在回复末尾输出反应演示标记 [RXN]反应物SMILES>>生成物SMILES[/RXN]:反应物与生成物用合法 SMILES 书写,多个物质用小数点分隔(如 [RXN]CH4.O=O>>C(=O)=O.O[/RXN]),不含系数、条件和箭头;若不确定任一物质的合法 SMILES,则不要输出该标记;前端会渲染球棍模型动态演示。' +
       (newsDigest ? `\n\n今日化学新闻清单:\n${newsDigest}` : '') +
-      (webContext ? `\n\n联网检索结果:\n${webContext}` : '') +
       (attachSection ? `\n\n用户附加的文献:\n${attachSection}` : '');
 
     const messages = [
@@ -313,77 +448,40 @@ export async function onRequestPost(context) {
       { role: 'user', content: sanitizedMessage.slice(0, 2000) },
     ];
 
-    // 流式调用 DeepSeek(SSE),转发为纯文本流,前端打字机渲染
-    const resp = await fetch('https://api.deepseek.com/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${env.DEEPSEEK_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages,
-        stream: true,
-        temperature: 0.7,
-      }),
-    });
-
-    if (!resp.ok || !resp.body) {
-      return new Response(JSON.stringify({
-        code: 502,
-        message: `DeepSeek 接口错误: ${resp.status}`,
-        data: null,
-      }), { status: 502, headers: CORS_HEADERS });
-    }
-
-    // 解析 DeepSeek SSE,逐段输出 delta.content
+    const ctx = { news, knowledge };
     const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
-    const upstream = resp.body.getReader();
+
     const stream = new ReadableStream({
       async start(controller) {
-        let buf = '';
+        const send = (obj) => controller.enqueue(encoder.encode('data: ' + JSON.stringify(obj) + '\n\n'));
         try {
-          while (true) {
-            const { done, value } = await upstream.read();
-            if (done) break;
-            buf += decoder.decode(value, { stream: true });
-            let idx;
-            while ((idx = buf.indexOf('\n\n')) >= 0) {
-              const chunk = buf.slice(0, idx);
-              buf = buf.slice(idx + 2);
-              for (const line of chunk.split('\n')) {
-                if (!line.startsWith('data:')) continue;
-                const payload = line.slice(5).trim();
-                if (!payload || payload === '[DONE]') continue;
-                try {
-                  const json = JSON.parse(payload);
-                  const delta = json.choices?.[0]?.delta?.content || '';
-                  if (delta) controller.enqueue(encoder.encode(delta));
-                } catch { /* 跳过不完整分片 */ }
-              }
-            }
+          const { finalContent, toolCalls } = await runAgentLoop(env, messages, ctx, send);
+          const text = finalContent || '';
+          const step = 6;
+          for (let i = 0; i < text.length; i += step) {
+            send({ type: 'text', delta: text.slice(i, i + step) });
+            await new Promise(r => setTimeout(r, 12));
           }
+          send({ type: 'done', toolCalls: toolCalls.map(t => ({ name: t.name, args: t.args, result: String(t.result || '').slice(0, 200) })) });
+        } catch (e) {
+          send({ type: 'error', message: e.message || String(e) });
         } finally {
           controller.close();
         }
       },
-      cancel() { upstream.cancel(); },
+      cancel() {},
     });
 
     return new Response(stream, {
       headers: {
         ...CORS_HEADERS,
-        'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
       },
     });
-
   } catch (e) {
     return new Response(JSON.stringify({
-      code: 500,
-      message: e.message,
-      data: null,
-    }), { status: 500, headers: CORS_HEADERS });
+      code: 500, message: e.message, data: null,
+    }), { status: 500, headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' } });
   }
 }

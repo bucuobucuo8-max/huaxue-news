@@ -20,9 +20,14 @@ export async function onRequestGet(context) {
   try {
     const { env } = context;
 
-    // 按收藏数降序取前10条
+    // 直接统计 favorites 表(真实结构 client_id/title/url/source),按不同访客去重计数
     const { results } = await env.DB.prepare(
-      'SELECT news_title, news_url, news_source, news_type, favorite_count FROM news_stats ORDER BY favorite_count DESC LIMIT 10'
+      `SELECT title AS news_title, MAX(url) AS news_url, MAX(source) AS news_source,
+              COUNT(DISTINCT client_id) AS favorite_count
+       FROM favorites
+       GROUP BY title
+       ORDER BY favorite_count DESC
+       LIMIT 10`
     ).all();
 
     // 为每条记录添加排名序号
@@ -31,7 +36,7 @@ export async function onRequestGet(context) {
       news_title: item.news_title,
       news_url: item.news_url,
       news_source: item.news_source,
-      news_type: item.news_type,
+      news_type: '',
       favorite_count: item.favorite_count,
     }));
 
