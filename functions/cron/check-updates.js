@@ -1,18 +1,20 @@
-// Cron 触发器:每 6 小时检查订阅关键词是否有新论文/新闻/撤稿
-// 需要在 wrangler.toml 中配置 crons 和 D1 绑定
+// 订阅监控:每 6 小时检查订阅关键词是否有新论文/新闻/撤稿
+// 调用方式:定时 Worker(huaxue-news-cron)POST /cron/check-updates 触发
+// (Cloudflare Pages Functions 不支持原生 Cron Triggers,由独立 Worker 定时请求本接口)
 
 import { fetchGDELT, fetchCrossref } from '../api/external.js';
 
-export async function onSchedule(event, env) {
-  if (!env.DB) return;
+async function runCheck(env) {
+  if (!env.DB) return { ok: true, inserted: 0, skipped: true };
 
+  let inserted = 0;
   try {
     // 获取所有活跃订阅
     const { results: subs } = await env.DB.prepare(
       'SELECT * FROM subscriptions WHERE active = 1'
     ).all();
 
-    if (!subs || subs.length === 0) return;
+    if (!subs || subs.length === 0) return { ok: true, inserted: 0, skipped: true };
 
     // 获取最新新闻作为匹配源
     const gdeltNews = await fetchGDELT().catch(() => []);
@@ -45,6 +47,7 @@ export async function onSchedule(event, env) {
           await env.DB.prepare(
             'INSERT INTO notifications (client_id, subscription_id, title, url, snippet) VALUES (?, ?, ?, ?, ?)'
           ).bind(sub.client_id, sub.id, match.title, match.url, (match.summary || '').substring(0, 200)).run();
+          inserted++;
         }
       }
 
@@ -55,5 +58,20 @@ export async function onSchedule(event, env) {
     }
   } catch (e) {
     console.error('Cron check failed:', e.message);
+    return { ok: false, inserted, error: e.message };
   }
+  return { ok: true, inserted };
+}
+
+// 由定时 Worker 通过 HTTP 调用
+export async function onRequestPost(context) {
+  const result = await runCheck(context.env);
+  return new Response(JSON.stringify(result), {
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+// 保留 scheduled 语义(当前 Cloudflare Pages 不派发 scheduled 事件,仅供文档说明)
+export async function onSchedule(event, env) {
+  await runCheck(env);
 }

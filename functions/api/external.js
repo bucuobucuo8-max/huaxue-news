@@ -119,7 +119,7 @@ function isValidArticle(title, url) {
 // =========================
 // 1. GDELT API - 全球化学新闻
 // =========================
-async function fetchGDELT() {
+export async function fetchGDELT() {
   const queries = [
     { q: '"chemistry" OR "chemical" OR "petrochemical"', source: 'GDELT' },
     { q: '"chemical plant" OR "chemical industry" OR "new material"', source: 'GDELT Industry' },
@@ -161,7 +161,7 @@ async function fetchGDELT() {
 // =========================
 // 2. Crossref API - 按化学期刊ISSN精确获取
 // =========================
-async function fetchCrossref() {
+export async function fetchCrossref() {
   // 知名化学期刊ISSN列表
   const chemistryISSNs = [
     '1755-4330', // Nature Chemistry
