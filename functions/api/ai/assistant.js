@@ -147,6 +147,25 @@ async function fetchPageText(url) {
   return (viaApi.length >= direct.length ? viaApi : direct).slice(0, 3000);
 }
 
+// 话题切换判断:避免「无关新问题被连带上一话题回答」。
+// 若最新用户消息是自包含的新问题(不带指代词、也不是短追问),只把该条消息发给模型,不带历史;
+// 只有指代词/短追问(如「它」「这个分子」「然后呢」「为什么」)才保留完整上下文。
+function trimContext(messages) {
+  const msgs = Array.isArray(messages) ? messages : [];
+  const last = msgs[msgs.length - 1];
+  if (!last || last.role !== 'user') return msgs;
+  const text = String((last.parts && last.parts[0] && last.parts[0].text) || '');
+  const t = text.trim();
+  if (!t) return msgs;
+  // 指代词:回指前文话题
+  const REF = /它|这个|那个|这些|那些|该|上述|以上|上面|之前|前面|刚才|这|那/;
+  // 短追问:单独成句的承接语
+  const CONT = /^(还有呢|然后呢|继续说|继续讲|继续|详细讲讲?|具体说说?|展开讲讲?|举个例子|解释一下|为什么|然后|还有)[？?。]?$/;
+  const short = t.replace(/[\s，。！？,.!?、;；:：]/g, '').length <= 2;
+  if (REF.test(t) || CONT.test(t) || short) return msgs; // 追问 → 保留完整上下文
+  return [last]; // 自包含新问题 → 只发本条,不带上文
+}
+
 export async function onRequestOptions() {
   return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' } });
 }
@@ -162,6 +181,8 @@ export async function onRequestPost(context) {
     const body = await request.json();
     // 限制历史轮数(最多最近 20 条),防止上下文过长
     const messages = Array.isArray(body.messages) ? body.messages.slice(-20) : [];
+    // 无关新问题不带历史,避免「连带回答」
+    const chatMessages = trimContext(messages);
 
     const openai = createOpenAI({
       apiKey: env.DEEPSEEK_API_KEY,
@@ -225,7 +246,7 @@ export async function onRequestPost(context) {
     const result = streamText({
       model,
       instructions: SYSTEM,
-      messages: await convertToModelMessages(messages),
+      messages: await convertToModelMessages(chatMessages),
       tools: { searchItems, getItemById, readUrl },
       stopWhen: isStepCount(5),
       temperature: 0.3,
